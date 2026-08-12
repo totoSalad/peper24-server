@@ -1,0 +1,73 @@
+{
+  "name": "peper24-server",
+  "version": "1.0.0",
+  "description": "Peper24 API server",
+  "private": true,
+  "egg": {
+    "typescript": true
+  },
+  "scripts": {
+    "start": "eggctl start --daemon --title=egg-server-peper24-server",
+    "stop": "eggctl stop --title=egg-server-peper24-server",
+    "dev": "egg-bin dev",
+    "test:unit": "egg-bin test 'test/unit/**/*.test.ts'",
+    "test:integration:prepare": "node scripts/prepare-integration.mjs",
+    "test:integration": "pnpm run test:integration:prepare && MYSQL_DATABASE=peper24_test REDIS_KEY_PREFIX=peper24:test: egg-bin test 'test/integration/**/*.test.ts'",
+    "test": "pnpm run test:unit && pnpm run test:integration",
+    "test:local": "egg-bin test",
+    "coverage": "egg-bin cov 'test/unit/**/*.test.ts'",
+    "preci": "pnpm run clean && pnpm run lint",
+    "ci": "egg-bin cov",
+    "postci": "pnpm run prepublishOnly && pnpm start && pnpm stop && pnpm run clean",
+    "lint": "eslint . --ext .ts --cache",
+    "build": "tsc",
+    "tsc": "tsc",
+    "clean": "tsc -b --clean",
+    "migrate": "node scripts/migrate.mjs",
+    "debug:prompt:memory": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/prompt-debug/memory/debug.mjs",
+    "debug:prompt:memory:real": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/prompt-debug/memory/debug.mjs --fixture scripts/prompt-debug/memory/fixtures/01KZNJ2ZYNKW60G3H6FCFJ2ZVP.local.json --allow-real-data",
+    "prepublishOnly": "pnpm run clean && pnpm run tsc"
+  },
+  "dependencies": {
+    "@ai-sdk/deepseek": "^3.0.22",
+    "@eggjs/scripts": "^4.0.0",
+    "@eggjs/tegg": "^3.5.2",
+    "@eggjs/tegg-aop-plugin": "^3.5.2",
+    "@eggjs/tegg-config": "^3.5.2",
+    "@eggjs/tegg-controller-plugin": "^3.5.2",
+    "@eggjs/tegg-eventbus-plugin": "^3.5.2",
+    "@eggjs/tegg-plugin": "^3.5.2",
+    "@eggjs/tegg-schedule-decorator": "^3.85.2",
+    "@eggjs/tegg-schedule-plugin": "^3.5.2",
+    "@eggjs/tracer": "^3.0.0",
+    "ai": "^7.0.52",
+    "argon2": "^0.45.1",
+    "dotenv": "^17.4.2",
+    "egg": "^4.0.0",
+    "ioredis": "^6.0.0",
+    "leoric": "^2.14.0",
+    "mysql2": "^3.23.2",
+    "ulid": "^3.0.2",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@eggjs/bin": "7",
+    "@eggjs/mock": "6",
+    "@eggjs/tsconfig": "1",
+    "@types/dotenv": "^8.2.3",
+    "@types/mocha": "10",
+    "@types/node": "22",
+    "eslint": "8",
+    "eslint-config-egg": "14",
+    "typescript": "5"
+  },
+  "engines": {
+    "node": ">=20.18.1"
+  },
+  "repository": {
+    "type": "git",
+    "url": ""
+  },
+  "author": "",
+  "license": "MIT"
+}

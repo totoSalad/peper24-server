@@ -1,0 +1,3 @@
+allowBuilds:
+  '@eggjs/bin': true
+  argon2: true
