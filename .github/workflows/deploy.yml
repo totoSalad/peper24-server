@@ -1,0 +1,70 @@
+name: Deploy server
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: peper24-production-server
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20.20.2
+
+      - name: Enable pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@10.15.0 --activate
+
+      - name: Verify
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm build
+          pnpm test:unit
+
+      - name: Package source
+        run: |
+          tar -czf "/tmp/peper24-server-${GITHUB_SHA}.tar.gz" \
+            --exclude=.git \
+            --exclude=node_modules \
+            --exclude=logs \
+            --exclude=coverage \
+            --exclude=.env \
+            --exclude='.env.*' \
+            --exclude=backups \
+            --exclude='database/backups' \
+            --exclude='._*' \
+            .
+
+      - name: Configure SSH
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/id_ed25519
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/id_ed25519 ~/.ssh/known_hosts
+
+      - name: Deploy
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+        run: |
+          archive="/tmp/peper24-server-${GITHUB_SHA}.tar.gz"
+          remote_archive="/tmp/peper24-server-${GITHUB_SHA}.tar.gz"
+          scp -o BatchMode=yes "$archive" "${DEPLOY_USER}@${DEPLOY_HOST}:${remote_archive}"
+          ssh -o BatchMode=yes "${DEPLOY_USER}@${DEPLOY_HOST}" \
+            "sudo /usr/local/sbin/deploy-peper24-server '${remote_archive}' '${GITHUB_SHA}'"
