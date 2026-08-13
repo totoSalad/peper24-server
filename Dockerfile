@@ -29,4 +29,4 @@ EXPOSE 7001
 HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=5 \
   CMD node -e "fetch('http://127.0.0.1:7001/api/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"
 
-CMD ["pnpm", "exec", "eggctl", "start", "-c", "2", "--env=prod", "--title=egg-server-peper24-server"]
+CMD ["pnpm", "exec", "eggctl", "start", "-c", "1", "--env=prod", "--title=egg-server-peper24-server"]
