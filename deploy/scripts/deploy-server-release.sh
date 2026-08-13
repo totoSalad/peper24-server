@@ -40,6 +40,7 @@ runuser -u deploy -- /bin/bash -c "
   export HOME=/home/deploy
   export XDG_CONFIG_HOME=/home/deploy/.config
   export XDG_CACHE_HOME=/home/deploy/.cache
+  export PATH=/usr/local/bin:/usr/bin:/bin
   cd '$release'
   pnpm config set registry https://registry.npmmirror.com
   pnpm install --frozen-lockfile
