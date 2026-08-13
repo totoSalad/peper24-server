@@ -37,6 +37,9 @@ chown -R deploy:deploy "$release"
 
 runuser -u deploy -- /bin/bash -c "
   set -Eeuo pipefail
+  export HOME=/home/deploy
+  export XDG_CONFIG_HOME=/home/deploy/.config
+  export XDG_CACHE_HOME=/home/deploy/.cache
   cd '$release'
   pnpm config set registry https://registry.npmmirror.com
   pnpm install --frozen-lockfile
