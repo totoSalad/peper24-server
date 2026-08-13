@@ -57,6 +57,8 @@ jobs:
           printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/id_ed25519
           printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > ~/.ssh/known_hosts
           chmod 600 ~/.ssh/id_ed25519 ~/.ssh/known_hosts
+          test "$(ssh-keygen -lf ~/.ssh/id_ed25519 | awk '{print $2}')" = \
+            "SHA256:DfSZhAtSNphJWJ4gZ61MptrrPZX2448M9gXqrROxj6o"
 
       - name: Deploy
         env:
