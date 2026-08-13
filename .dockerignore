@@ -12,4 +12,5 @@ coverage
 backups
 test
 *.log
-
+._*
+.DS_Store
