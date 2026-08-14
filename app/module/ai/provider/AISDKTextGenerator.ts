@@ -1,12 +1,11 @@
-import { Logger } from '@eggjs/tegg';
+import type { Logger } from '@eggjs/tegg';
 import {
   APICallError,
   generateText,
-  InferGenerateOutput,
-  LanguageModel,
   NoObjectGeneratedError,
   Output,
 } from 'ai';
+import type { InferGenerateOutput, LanguageModel } from 'ai';
 
 const MAX_RETRIES = 2;
 const INITIAL_RETRY_DELAY_MS = 1000;
@@ -29,6 +28,7 @@ interface GenerateTextWithRetryOptions<OUTPUT extends Output.Output> {
   system?: string;
   prompt: string;
   output?: OUTPUT;
+  reasoning?: 'provider-default' | 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh';
   abortSignal?: AbortSignal;
   /** aiLogger to emit start/done lifecycle logs. Optional so tests can omit it. */
   logger?: Logger;

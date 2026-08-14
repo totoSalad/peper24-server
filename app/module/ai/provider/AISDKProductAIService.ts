@@ -42,6 +42,14 @@ const CHAT_HARD_CAP_TOKENS = 8_000;
 const CHAT_WINDOW_MAX_MESSAGES = 30;
 const CHAT_MESSAGE_MAX_TOKENS = 2_000;
 
+// 英文词汇增强在真实评测中关闭 Thinking 后保持 30/30 正确且平均低于 1 秒；
+// 中文等输入仍需要翻译和人名判断，因此保留供应商默认推理强度。
+const NON_ENGLISH_VOCABULARY_SCRIPT = /[぀-ヿ㐀-䶿一-鿿豈-﫿ｦ-ﾟ가-힯]/;
+
+function vocabularyReasoning(text: string): 'none' | 'provider-default' {
+  return NON_ENGLISH_VOCABULARY_SCRIPT.test(text) ? 'provider-default' : 'none';
+}
+
 @SingletonProto({ name: 'ProductAIService', accessLevel: AccessLevel.PUBLIC })
 export class AISDKProductAIService extends ProductAIService {
   private readonly development = new DevelopmentProductAIService();
@@ -254,6 +262,7 @@ export class AISDKProductAIService extends ProductAIService {
       model: resolved.model,
       logger: this.aiLogger,
       label: 'enrichVocabulary',
+      reasoning: vocabularyReasoning(input.text),
       output: Output.object({
         name: 'VocabularyEnrichment',
         description: 'Canonical learning information for one English word or short phrase.',

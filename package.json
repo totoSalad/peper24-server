@@ -26,6 +26,7 @@
     "migrate": "node scripts/migrate.mjs",
     "debug:prompt:memory": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/prompt-debug/memory/debug.mjs",
     "debug:prompt:memory:real": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/prompt-debug/memory/debug.mjs --fixture scripts/prompt-debug/memory/fixtures/01KZNJ2ZYNKW60G3H6FCFJ2ZVP.local.json --allow-real-data",
+    "debug:prompt:vocabulary": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/prompt-debug/vocabulary/debug.mjs",
     "prepublishOnly": "pnpm run clean && pnpm run tsc"
   },
   "dependencies": {

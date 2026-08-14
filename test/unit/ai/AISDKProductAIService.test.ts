@@ -246,6 +246,10 @@ describe('AISDKProductAIService', () => {
     assert.ok(result);
     assert.equal(result.cnMeaning, '全麦面包');
     assert.equal(result.enMeaning, 'whole wheat bread');
+    assert.equal(
+      (model.doGenerateCalls[0] as unknown as { reasoning?: string }).reasoning,
+      'none',
+    );
   });
 
   it('uses deterministic vocabulary enrichment when external AI is disabled', async () => {
@@ -278,6 +282,10 @@ describe('AISDKProductAIService', () => {
     assert.equal(await service.enrichVocabulary({
       text: '梁静茹', context: 'I listened to 梁静茹 yesterday.',
     }), null);
+    assert.equal(
+      (model.doGenerateCalls[0] as unknown as { reasoning?: string }).reasoning,
+      'provider-default',
+    );
   });
 
   it('returns a schema-validated message translation', async () => {
