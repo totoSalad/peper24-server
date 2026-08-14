@@ -106,7 +106,7 @@ export class VocabularyService {
     return { expression, info };
   }
 
-  async addFromTool(
+  async addFromConversation(
     userId: string,
     expression: string,
     info: VocabularyEnrichment,

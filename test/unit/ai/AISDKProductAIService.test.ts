@@ -92,54 +92,6 @@ describe('AISDKProductAIService', () => {
     });
   });
 
-  it('automatically explains an embedded Chinese fragment before streaming the reply', async () => {
-    const model = new MockLanguageModelV3({
-      provider: 'mock-provider',
-      modelId: 'mock-chat',
-      doStream: {
-        stream: simulateReadableStream({
-          chunks: [
-            { type: 'stream-start', warnings: [] },
-            { type: 'text-start', id: 'text-1' },
-            { type: 'text-delta', id: 'text-1', delta: 'Daikon radish works well in that dish.' },
-            { type: 'text-end', id: 'text-1' },
-            {
-              type: 'finish', finishReason: { unified: 'stop', raw: undefined },
-              usage: {
-                inputTokens: { total: 7, noCache: 7, cacheRead: undefined, cacheWrite: undefined },
-                outputTokens: { total: 5, text: 5, reasoning: undefined },
-              },
-            },
-          ],
-        }),
-      },
-    });
-    const service = new AISDKProductAIService(new StaticTextModelProvider({
-      model: model as LanguageModel, provider: 'mock-provider', modelId: 'mock-chat',
-    }), noopLogger);
-    const calls: Array<{ text: string; context: string }> = [];
-    const content = 'It is made of meat and "白萝卜".';
-    const events = await collect(service.chat({
-      messageId: '01MESSAGE', userId: '01USER', conversationId: '01CONVERSATION',
-      topic: 'cooking', history: [], content, requiredExpressions: [ '白萝卜' ],
-      tools: {
-        explainExpression: async input => {
-          calls.push(input);
-          return {
-            vocabularyId: '01VOCABULARY', expression: 'daikon radish',
-            cnMeaning: '白萝卜', enMeaning: 'daikon radish',
-            example: 'This dish uses daikon radish.', phonetic: '/ˈdaɪkɑːn ˈrædɪʃ/',
-          };
-        },
-      },
-    }));
-
-    assert.deepEqual(calls, [{ text: '白萝卜', context: content }]);
-    assert.deepEqual(events.map(event => event.type), [
-      'message.start', 'tool.call', 'tool.result', 'message.delta', 'message.done',
-    ]);
-  });
-
   it('uses the deterministic provider when real AI is disabled locally', async () => {
     const service = new AISDKProductAIService(new StaticTextModelProvider(null), noopLogger);
 
@@ -397,22 +349,6 @@ describe('AISDKProductAIService', () => {
       [ 'weekend-hobby', 'home-city' ]);
     assert.deepEqual(result.decisions[0].shouldSave && result.decisions[0].sourceMessageIds,
       [ '01MESSAGE' ]);
-  });
-
-  it('keeps the development chat alive when an expression tool fails', async () => {
-    const service = new AISDKProductAIService(new StaticTextModelProvider(null), noopLogger);
-    const events = await collect(service.chat({
-      messageId: '01MESSAGE', userId: '01USER', conversationId: '01CONVERSATION',
-      topic: 'Daily life', history: [], content: '“差点迟到”怎么说？',
-      tools: {
-        explainExpression: async () => { throw new Error('lookup failed'); },
-      },
-    }));
-    assert.equal(events.at(-1)?.type, 'message.done');
-    const result = events.find(event => event.type === 'tool.result');
-    assert.deepEqual(result?.type === 'tool.result' && result.output, {
-      ok: false, error: { code: 'EXPRESSION_EXPLANATION_FAILED' },
-    });
   });
 
   it('retries rate-limit failures (429) then succeeds', async () => {

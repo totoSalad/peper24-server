@@ -54,8 +54,6 @@ abstract class ProductAIService {
 ```
 message.start   → 开始生成回复
 message.delta   → 增量文本
-tool.call       → AI 调用工具 (查词/加生词)
-tool.result     → 工具调用结果
 correction.ready → 语法纠正
 message.done    → 回复完成 (含 token 用量)
 error           → 错误
@@ -112,14 +110,16 @@ AISDKProductAIService      DevelopmentProductAIService
 │
 ├─ ai.chat() → 流式生成助手回复
 │     ├─ prompt: ConversationPrompt (含 topic, scene, learner 画像)
-│     ├─ tools: explainExpression / addVocabulary
 │     └─ 输出: AsyncIterable<ChatEvent>
 │
 ├─ ai.analyzeGrammar() → 并行分析用户输入的语法
 │     ├─ prompt: GrammarAnalysisPrompt
 │     └─ 输出: GrammarAnalysis { errors: Correction[] }
 │
-└─ (助手可在对话中调用)
-      ├─ ai.enrichVocabulary() → 解释生词
-      └─ ai.translate() → 翻译消息
+├─ ConversationService 检测有英文语境的中文表达
+│     └─ 后台调用 enrichVocabulary() 并保存，不阻塞聊天流
+│
+└─ ai.translate() → 按需翻译已保存消息
 ```
+
+聊天模型不声明、不调用任何词汇 Tool。“How do I say \"散心\" in English”、`for "散心"`、英文句子中夹中文等场景，由 `ConversationService.extractEmbeddedChineseExpressions()` 确定性提取，最多收集 3 个表达。

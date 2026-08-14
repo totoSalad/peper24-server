@@ -44,17 +44,17 @@ describe('ConversationPrompt', () => {
     assert.match(prompt, /"one_liner":"Learner practiced ordering at a restaurant\."/);
   });
 
-  it('hard-requires the explain_expression tool for how-to-say requests', () => {
+  it('answers how-to-say requests without delegating vocabulary persistence to the model', () => {
     const prompt = buildConversationSystemPrompt({
       topic: 'Coffee',
       learner: { englishLevel: 'B1' },
     });
 
-    assert.match(prompt, /\[TOOL POLICY — MANDATORY\]/);
-    assert.match(prompt, /the only way an English expression is saved/);
-    assert.match(prompt, /you MUST call it on the SAME turn/i);
-    assert.match(prompt, /exact Chinese fragment is allowed/i);
-    assert.match(prompt, /otherwise English sentence contains a Chinese word or short phrase/i);
+    assert.ok(!prompt.includes('explain_expression'));
+    assert.ok(!prompt.includes('[TOOL POLICY'));
+    assert.match(prompt, /how to say X/);
+    assert.match(prompt, /reply with the natural English expression/i);
+    assert.match(prompt, /soothing, rhythmic pace/);
   });
 
   it('omits the conversation-state layer when no state is provided', () => {

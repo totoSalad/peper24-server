@@ -93,22 +93,19 @@ POST /api/v1/vocabularies
            easinessFactor=2.5, nextReviewAt=now (立即可复习)
 ```
 
-### 流程 2：AI 工具调用 (`addFromTool`)
+### 流程 2：对话自动收集 (`addFromConversation`)
 
-在对话过程中，AI 可以调用 `addVocabulary` 工具：
+当用户消息在英文语境中包含中文词或短语时，`ConversationService` 会后台启动自动收集。包括 `How do I say "散心" in English`、`for "散心"`、`"散心" means ...` 和普通英文句子夹中文：
 
 ```
-ai.chat() → tool.call { name: "addVocabulary", input: { expression: "exquisite" } }
-│
-├─ 对话中已通过 explainExpression 获取了词汇详情
-│     (enriched Map 缓存)
+extractEmbeddedChineseExpressions() → enrichExpression() → addFromConversation()
 │
 ├─ saveEnriched()
 │     直接使用已获取的词汇信息
 │     关联到当前消息
 │     → 用户无需手动操作，对话中自动加入生词本
 │
-└─ 返回 { vocabularyId, expression }
+└─ 该后台任务不被 chat 或 message.done await，失败仅记录 warning
 ```
 
 ### 流程 3：间隔复习 (SM-2 算法)
@@ -177,7 +174,7 @@ Day 0     Day 1     Day 6        Day 15           Day 37
 | 方式 | 触发者 | 场景 |
 |---|---|---|
 | `addFromSelection` | 用户手动 | 用户选中消息中的词 → POST /api/v1/vocabularies |
-| `addFromTool` | AI 工具调用 | 对话中 AI 说 "Would you like to add this to your vocab?" → 用户确认 → AI 调用 addVocabulary tool |
+| `addFromConversation` | 服务端检测 | 检测英文语境中的中文表达，后台增强并保存，不经过模型 Tool |
 
 ## 关键设计
 

@@ -3,7 +3,6 @@ import {
   ChatInput,
   DailyLearningSummaryGeneration,
   DailyLearningSummaryInput,
-  ExplainedExpressionResult,
   GrammarAnalysis,
   GrammarAnalysisInput,
   MemoryExtractionInput,
@@ -40,34 +39,7 @@ export class DevelopmentProductAIService extends ProductAIService {
   @assertDevelopment
   async* chat(input: ChatInput): AsyncIterable<ChatEvent> {
     yield { type: 'message.start', messageId: input.messageId };
-    let response = `Thanks for sharing. ${input.content} What happened next?`;
-    const requiredExpression = input.requiredExpressions?.[0];
-    const isHowToSay = /how to say|怎么说|怎么表达/i.test(input.content);
-    if ((requiredExpression || isHowToSay) && input.tools) {
-      const text = requiredExpression ?? input.content
-        .replace(/^\s*how to say\s*/i, '')
-        .replace(/\s*(?:怎么说|怎么表达).*$/i, '')
-        .replace(/^[“”"']|[“”"']$/g, '')
-        .trim();
-      const explainId = `dev-explain-${input.messageId}`;
-      const explainInput = { text, context: input.content };
-      let explained: ExplainedExpressionResult | null | undefined;
-      try {
-        explained = await input.tools.explainExpression(explainInput);
-      } catch {
-        yield {
-          type: 'tool.result',
-          toolCallId: explainId,
-          output: { ok: false, error: { code: 'EXPRESSION_EXPLANATION_FAILED' } },
-        };
-        response = 'I couldn’t look up that expression just now, but we can keep talking.';
-      }
-      if (explained) {
-        yield { type: 'tool.call', toolCallId: explainId, name: 'explain_expression', input: explainInput };
-        yield { type: 'tool.result', toolCallId: explainId, output: explained };
-        response = `${explained.expression} — ${explained.cnMeaning}. I’ve added it to your vocabulary.`;
-      }
-    }
+    const response = `Thanks for sharing. ${input.content} What happened next?`;
     for (const delta of response.match(/\S+\s*/g) ?? [ response ]) {
       if (input.signal?.aborted) throw new Error('request aborted');
       yield { type: 'message.delta', messageId: input.messageId, delta };

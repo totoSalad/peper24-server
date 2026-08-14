@@ -193,16 +193,6 @@ export interface ChatHistoryMessage {
   content: string;
 }
 
-/** explain_expression 工具返回：富化信息 + 已保存的词汇记录。 */
-export interface ExplainedExpressionResult extends VocabularyEnrichment {
-  vocabularyId: string;
-  expression: string;
-}
-
-export interface ChatToolExecutor {
-  explainExpression(input: { text: string; context: string }): Promise<ExplainedExpressionResult | null>;
-}
-
 export interface ChatInput {
   messageId: string;
   userId: string;
@@ -211,8 +201,6 @@ export interface ChatInput {
   scene?: string;
   history: ChatHistoryMessage[];
   content: string;
-  /** Non-English fragments embedded in an otherwise English message that must be explained and saved. */
-  requiredExpressions?: string[];
   learner?: LearnerContext;
   conversationState?: ConversationState;
   /** 已持久化的折叠消息运行摘要（未折叠轮直接注入系统 prompt）。 */
@@ -220,7 +208,6 @@ export interface ChatInput {
   /** 运行摘要已覆盖的消息条数（折叠边界，用于增量总结新折叠段）。 */
   summaryFoldedUntil?: number;
   signal?: AbortSignal;
-  tools?: ChatToolExecutor;
 }
 
 export interface FoldSummaryInput {
