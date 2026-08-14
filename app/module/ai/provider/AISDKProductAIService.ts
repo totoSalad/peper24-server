@@ -126,7 +126,6 @@ export class AISDKProductAIService extends ProductAIService {
         topic: input.topic,
         scene: input.scene,
         learner: input.learner,
-        conversationState: input.conversationState,
         summary,
       }),
       messages: chatMessages,

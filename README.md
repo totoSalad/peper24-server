@@ -16,12 +16,11 @@ Peper24 是一个面向英语口语学习者的 AI 对话服务端。它不只�
 ③ CEFR adaptation         A1-C2 难度、句长、词汇与提问策略
 ④ Topic and scene         当前话题与场景
 ⑤ Learner memories        当前用户的活跃记忆
-⑥ Conversation state      会话级 one-liner 状态
-⑦ Folded history summary  被折叠旧消息的运行摘要
-⑧ Recent messages         最近原始消息窗口
+⑥ Folded history summary  被折叠旧消息的运行摘要
+⑦ Recent messages         最近原始消息窗口
 ```
 
-前五层变化较慢，形成稳定前缀，便于模型提供方复用上下文缓存；会话状态、折叠摘要和最近消息放在后部，避免动态内容破坏稳定前缀。
+前五层变化较慢，形成稳定前缀，便于模型提供方复用上下文缓存；折叠摘要和最近消息放在后部，避免动态内容破坏稳定前缀。
 
 所有来自用户、场景、记忆和摘要的数据都被明确标记为 **untrusted data**，只能用于理解上下文，不能被当作系统指令。这让 Prompt 分层同时承担产品行为约束和 Prompt Injection 边界。
 
