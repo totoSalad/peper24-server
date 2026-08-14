@@ -165,12 +165,6 @@ export interface LearnerContext {
   memories?: LearnerMemory[];
 }
 
-/** 第⑥层「会话状态」数据源（conversations.summary_json 的注入视图）。 */
-export interface ConversationState {
-  /** 会话一句话总结（语义压缩，惰性刷新）。 */
-  oneLiner?: string;
-}
-
 export type ChatEvent =
   | { type: 'message.start'; messageId: string }
   | { type: 'message.delta'; messageId: string; delta: string }
@@ -202,7 +196,6 @@ export interface ChatInput {
   history: ChatHistoryMessage[];
   content: string;
   learner?: LearnerContext;
-  conversationState?: ConversationState;
   /** 已持久化的折叠消息运行摘要（未折叠轮直接注入系统 prompt）。 */
   summary?: string;
   /** 运行摘要已覆盖的消息条数（折叠边界，用于增量总结新折叠段）。 */
