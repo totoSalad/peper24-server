@@ -45,6 +45,7 @@ const emptyGrammarAnalysis: GrammarAnalysis = {
 const HAN_FRAGMENT = /\p{Script=Han}+/gu;
 const LATIN_WORD = /[A-Za-z]+(?:['’][A-Za-z]+)*/g;
 const QUOTE = '["“”\'‘’]';
+const CHINESE_REQUEST_MARKER = /^(?:怎么说|怎么表达|翻译|想学一下)$/;
 
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -57,15 +58,22 @@ function isChineseNameOrLabel(content: string, expression: string): boolean {
     || new RegExp(`\\b(?:her|his)\\s+name\\s+is\\s+${quoted}`, 'i').test(content);
 }
 
+function isQuotedExpressionAfterFor(content: string, expression: string): boolean {
+  const quoted = `${QUOTE}\\s*${escapeRegExp(expression)}\\s*${QUOTE}`;
+  return new RegExp(`\\bfor\\s+${quoted}`, 'i').test(content);
+}
+
 export function extractEmbeddedChineseExpressions(
   content: string,
   onSkippedNameOrLabel?: (expression: string) => void,
 ): string[] {
-  if ((content.match(LATIN_WORD) ?? []).length < 2) return [];
+  const latinWordCount = (content.match(LATIN_WORD) ?? []).length;
   const expressions: string[] = [];
   for (const match of content.matchAll(HAN_FRAGMENT)) {
     const expression = match[0].trim();
     if (!expression || expression.length > 40 || expressions.includes(expression)) continue;
+    if (latinWordCount < 2 && !isQuotedExpressionAfterFor(content, expression)) continue;
+    if (CHINESE_REQUEST_MARKER.test(expression)) continue;
     if (isChineseNameOrLabel(content, expression)) {
       onSkippedNameOrLabel?.(expression);
       continue;
@@ -223,8 +231,22 @@ export class ConversationService {
 
     let generatedContent = '';
     let doneUsage: AIUsage | undefined;
-    const toolEvents: Array<Extract<ChatEvent, { type: 'tool.call' | 'tool.result' }>> = [];
     const learnerWithMemories = await this.withMemories(userId, learner);
+    const requiredExpressions = extractEmbeddedChineseExpressions(content, expression => {
+      this.aiLogger.info(
+        '[vocabulary-detect] skipped person name or Chinese label text=%j',
+        expression,
+      );
+    });
+    for (const expression of requiredExpressions) {
+      void this.saveVocabularyInBackground({
+        userId,
+        expression,
+        content,
+        sourceMessageId: exchange.userMessage.id,
+        learner: learnerWithMemories,
+      });
+    }
     const grammarAnalysis = this.ai.analyzeGrammar({
       content,
       learner: learnerWithMemories,
@@ -239,39 +261,15 @@ export class ConversationService {
         scene: conversation.scene,
         history: history.map(message => ({ role: message.role, content: message.content })),
         content,
-        requiredExpressions: extractEmbeddedChineseExpressions(content, expression => {
-          this.aiLogger.info(
-            '[vocabulary-detect] skipped person name or Chinese label text=%j',
-            expression,
-          );
-        }),
         learner: learnerWithMemories,
         summary: conversation.summary,
         summaryFoldedUntil: conversation.summaryFoldedUntil,
         signal: input.signal,
-        tools: {
-          explainExpression: async value => {
-            const resolved = await this.vocabulary.enrichExpression(
-              value.text, value.context, learnerWithMemories,
-            );
-            if (!resolved) return null;
-            const { expression, info } = resolved;
-            const saved = await this.vocabulary.addFromTool(
-              userId,
-              expression,
-              info,
-              exchange.userMessage.id,
-              content,
-            );
-            return { vocabularyId: saved.id, expression: saved.expression, ...info };
-          },
-        },
       })) {
         if ('messageId' in event && event.messageId !== exchange.assistantMessage.id) {
           throw new Error('AI event message ID mismatch');
         }
         if (event.type === 'message.delta') generatedContent += event.delta;
-        if (event.type === 'tool.call' || event.type === 'tool.result') toolEvents.push(event);
         if (event.type === 'message.done') {
           doneUsage = event.usage;
           continue;
@@ -297,7 +295,7 @@ export class ConversationService {
         generatedContent,
         doneUsage,
         grammarGroups,
-        toolEvents,
+        [],
         this.clock.now(),
       );
       for (const correction of corrections) {
@@ -321,6 +319,36 @@ export class ConversationService {
         this.clock.now(),
       );
       yield { type: 'error', code: 'AI_STREAM_FAILED', retryable: true };
+    }
+  }
+
+  private async saveVocabularyInBackground(input: {
+    userId: string;
+    expression: string;
+    content: string;
+    sourceMessageId: string;
+    learner: LearnerContext;
+  }): Promise<void> {
+    try {
+      const resolved = await this.vocabulary.enrichExpression(
+        input.expression,
+        input.content,
+        input.learner,
+      );
+      if (!resolved) return;
+      await this.vocabulary.addFromConversation(
+        input.userId,
+        resolved.expression,
+        resolved.info,
+        input.sourceMessageId,
+        input.content,
+      );
+    } catch (error) {
+      this.aiLogger.warn(
+        '[vocabulary-auto-save] automatic vocabulary save failed messageId=%s err=%s',
+        input.sourceMessageId,
+        error instanceof Error ? error.message : String(error),
+      );
     }
   }
 

@@ -37,12 +37,20 @@ describe('ConversationService', () => {
       'It\'s special food in my home town. It\'s made of meat and "白萝卜".',
     ), [ '白萝卜' ]);
     assert.deepEqual(extractEmbeddedChineseExpressions('白萝卜怎么说？'), []);
+    assert.deepEqual(extractEmbeddedChineseExpressions('for "散心"'), [ '散心' ]);
+    assert.deepEqual(extractEmbeddedChineseExpressions('I want to know 白萝卜 怎么说'), [ '白萝卜' ]);
     assert.deepEqual(extractEmbeddedChineseExpressions('白萝卜怎么用 AI 翻译？'), []);
     assert.deepEqual(extractEmbeddedChineseExpressions('It is called "拼豆" in Chinese.'), []);
     assert.deepEqual(extractEmbeddedChineseExpressions('She is "梁静茹".'), []);
     assert.deepEqual(extractEmbeddedChineseExpressions('Her name is “梁静茹”.'), []);
     assert.deepEqual(extractEmbeddedChineseExpressions('I ate 白萝卜 with 白萝卜 and 胡萝卜.'),
       [ '白萝卜', '胡萝卜' ]);
+    assert.deepEqual(extractEmbeddedChineseExpressions(
+      '"散心" means something like "to clear your head" or "to relax your mind."',
+    ), [ '散心' ]);
+    assert.deepEqual(extractEmbeddedChineseExpressions(
+      '"散心" means "to clear your head" in English.',
+    ), [ '散心' ]);
   });
 
   const now = new Date('2026-08-06T01:00:00.000Z');
@@ -487,63 +495,7 @@ describe('ConversationService', () => {
     assert.equal(next.filter(event => event.type === 'correction.ready').length, 1);
   });
 
-  it('executes expression tools, saves the vocabulary, and replays tool events idempotently', async () => {
-    const { ai, vocabularyRepository, service } = setup();
-    await service.createConversation('01USER', { topic: 'work' });
-    ai.vocabularyEnrichment = {
-      cnMeaning: '差点迟到', enMeaning: 'almost late',
-      example: 'I was almost late today.',
-      phonetic: '/ˈɔːlmoʊst leɪt/',
-    };
-    const input = { content: '“我今天差点迟到了”怎么说？', clientRequestId: 'tool-request' };
-    const first = await collect(service.streamMessage('01USER', '01CONVERSATION', input));
-    const replay = await collect(service.streamMessage('01USER', '01CONVERSATION', input));
-
-    assert.deepEqual(first.filter(event => event.type.startsWith('tool.')).map(event => event.type), [
-      'tool.call', 'tool.result',
-    ]);
-    assert.equal(vocabularyRepository.items.length, 1);
-    assert.equal(ai.vocabularyCalls, 1);
-    assert.deepEqual(replay.filter(event => event.type.startsWith('tool.')).map(event => event.type), [
-      'tool.call', 'tool.result',
-    ]);
-    assert.equal(ai.chatCalls, 1);
-  });
-
-  it('triggers the expression tool for the "how to say" quick-tool format', async () => {
-    const { ai, vocabularyRepository, service } = setup();
-    await service.createConversation('01USER', { topic: 'work' });
-    ai.vocabularyEnrichment = {
-      cnMeaning: '差点迟到', enMeaning: 'almost late',
-      example: 'I was almost late today.',
-      phonetic: '/ˈɔːlmoʊst leɪt/',
-    };
-    const input = { content: 'how to say "我今天差点迟到了"', clientRequestId: 'tool-request-how-to-say' };
-    const events = await collect(service.streamMessage('01USER', '01CONVERSATION', input));
-
-    assert.deepEqual(events.filter(event => event.type.startsWith('tool.')).map(event => event.type), [
-      'tool.call', 'tool.result',
-    ]);
-    assert.equal(vocabularyRepository.items.length, 1);
-    assert.equal(ai.vocabularyCalls, 1);
-  });
-
-  it('converts a Chinese tool text to English (via enMeaning) before saving it', async () => {
-    const { ai, vocabularyRepository, service } = setup();
-    await service.createConversation('01USER', { topic: 'work' });
-    ai.vocabularyEnrichment = {
-      cnMeaning: '差点迟到', enMeaning: 'almost late',
-      example: 'I was almost late today.',
-      phonetic: '/ˈɔːlmoʊst leɪt/',
-    };
-    const input = { content: 'how to say "我今天差点迟到了"', clientRequestId: 'tool-convert' };
-    await collect(service.streamMessage('01USER', '01CONVERSATION', input));
-
-    assert.equal(vocabularyRepository.items.length, 1);
-    assert.equal(vocabularyRepository.items[0].expression, 'almost late');
-  });
-
-  it('automatically explains and saves a Chinese fragment embedded in English', async () => {
+  it('automatically saves an embedded Chinese fragment without blocking chat completion', async () => {
     const { ai, vocabularyRepository, service } = setup();
     await service.createConversation('01USER', { topic: 'cooking' });
     ai.vocabularyEnrichment = {
@@ -555,15 +507,76 @@ describe('ConversationService', () => {
       content: 'It\'s special food in my home town. It\'s make of meat and "白萝卜".',
       clientRequestId: 'tool-embedded-chinese',
     };
-    const events = await collect(service.streamMessage('01USER', '01CONVERSATION', input));
+    let markStarted!: () => void;
+    let release!: () => void;
+    const started = new Promise<void>(resolve => { markStarted = resolve; });
+    ai.vocabularyStarted = markStarted;
+    ai.vocabularyBarrier = new Promise<void>(resolve => { release = resolve; });
 
-    assert.deepEqual(ai.chatInputs[0].requiredExpressions, [ '白萝卜' ]);
-    assert.deepEqual(events.filter(event => event.type.startsWith('tool.')).map(event => event.type),
-      [ 'tool.call', 'tool.result' ]);
+    const collecting = collect(service.streamMessage('01USER', '01CONVERSATION', input));
+    await started;
+    const events = await Promise.race([
+      collecting,
+      new Promise<null>(resolve => setTimeout(() => resolve(null), 50)),
+    ]);
+
+    assert.ok(events, 'chat should finish while vocabulary saving is still pending');
+    assert.equal(events.at(-1)?.type, 'message.done');
+    assert.equal(events.some(event => event.type.startsWith('tool.')), false);
+    assert.equal('requiredExpressions' in ai.chatInputs[0], false);
     assert.equal(ai.vocabularyCalls, 1);
+    assert.equal(vocabularyRepository.items.length, 0);
+
+    release();
+    await new Promise<void>(resolve => setImmediate(resolve));
     assert.equal(vocabularyRepository.items.length, 1);
     assert.equal(vocabularyRepository.items[0].expression, 'daikon radish');
     assert.equal(vocabularyRepository.contexts[0].sentence, input.content);
+  });
+
+  it('recognizes and saves the Chinese expression from `for "散心"`', async () => {
+    const { ai, vocabularyRepository, service } = setup();
+    await service.createConversation('01USER', { topic: 'cooking' });
+    ai.vocabularyEnrichment = {
+      cnMeaning: '散心', enMeaning: 'clear your head',
+      example: 'A walk can help you clear your head.',
+      phonetic: '/klɪr jʊr hɛd/',
+    };
+
+    const events = await collect(service.streamMessage('01USER', '01CONVERSATION', {
+      content: 'for "散心"',
+      clientRequestId: 'for-quoted-expression-auto-save',
+    }));
+    await new Promise<void>(resolve => setImmediate(resolve));
+
+    assert.equal(events.at(-1)?.type, 'message.done');
+    assert.equal(ai.vocabularyCalls, 1);
+    assert.equal(vocabularyRepository.items.length, 1);
+    assert.equal(vocabularyRepository.items[0].expression, 'clear your head');
+  });
+
+  it('saves a quoted Chinese expression from an English explanation', async () => {
+    const { ai, vocabularyRepository, service } = setup();
+    await service.createConversation('01USER', { topic: 'work' });
+    ai.vocabularyEnrichment = {
+      cnMeaning: '散心', enMeaning: 'clear your head',
+      example: 'We drive to the countryside to clear our heads.',
+      phonetic: '/klɪr jʊr hɛd/',
+    };
+    const content = '"散心" means something like "to clear your head" or "to relax your mind." '
+      + 'So you could say, "We drive to the countryside to clear our heads." '
+      + 'That\'s a nice way to recharge — do you and your family go there together often?';
+
+    const events = await collect(service.streamMessage('01USER', '01CONVERSATION', {
+      content, clientRequestId: 'quoted-chinese-expression',
+    }));
+    await new Promise<void>(resolve => setImmediate(resolve));
+
+    assert.equal(events.at(-1)?.type, 'message.done');
+    assert.equal(ai.vocabularyCalls, 1);
+    assert.equal(vocabularyRepository.items.length, 1);
+    assert.equal(vocabularyRepository.items[0].expression, 'clear your head');
+    assert.equal(vocabularyRepository.contexts[0].sentence, content);
   });
 
   it('silently ignores an embedded person name rejected by vocabulary enrichment', async () => {
@@ -575,7 +588,7 @@ describe('ConversationService', () => {
       clientRequestId: 'tool-person-name',
     }));
 
-    assert.deepEqual(ai.chatInputs[0].requiredExpressions, [ '梁静茹' ]);
+    assert.equal('requiredExpressions' in ai.chatInputs[0], false);
     assert.equal(events.some(event => event.type.startsWith('tool.')), false);
     assert.equal(vocabularyRepository.items.length, 0);
   });
@@ -592,11 +605,31 @@ describe('ConversationService', () => {
       content: 'She is "梁静茹".', clientRequestId: 'tool-detected-person-name',
     }));
 
-    assert.deepEqual(ai.chatInputs[0].requiredExpressions, []);
+    assert.equal('requiredExpressions' in ai.chatInputs[0], false);
     assert.equal(infoLogs.length, 1);
     assert.match(String(infoLogs[0][0]), /skipped person name or Chinese label/);
     assert.equal(infoLogs[0][1], '梁静茹');
     assert.equal(infoLogs.some(args => args.includes('She is "梁静茹".')), false);
+  });
+
+  it('logs an automatic vocabulary failure without failing or delaying chat', async () => {
+    const warnLogs: unknown[][] = [];
+    const logger: Logger = {
+      ...noopLogger,
+      warn: (...args: unknown[]) => warnLogs.push(args),
+    };
+    const { ai, service } = setup(logger);
+    await service.createConversation('01USER', { topic: 'cooking' });
+    ai.vocabularyFailure = new Error('vocabulary provider unavailable');
+
+    const events = await collect(service.streamMessage('01USER', '01CONVERSATION', {
+      content: 'It is made with 白萝卜.', clientRequestId: 'vocabulary-failure',
+    }));
+    await new Promise<void>(resolve => setImmediate(resolve));
+
+    assert.equal(events.at(-1)?.type, 'message.done');
+    assert.equal(warnLogs.length, 1);
+    assert.match(String(warnLogs[0][0]), /automatic vocabulary save failed/);
   });
 
   it('passes the persisted summary into chat and persists summary.update without forwarding it', async () => {

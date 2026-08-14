@@ -1,6 +1,5 @@
-import { Output, stepCountIs, streamText, tool } from 'ai';
+import { Output, streamText } from 'ai';
 import { AccessLevel, Inject, Logger, SingletonProto } from '@eggjs/tegg';
-import { z } from 'zod';
 import { buildConversationSystemPrompt } from '../prompt/ConversationPrompt';
 import { buildGrammarAnalysisPrompt } from '../prompt/GrammarAnalysisPrompt';
 import { buildVocabularyEnrichmentPrompt } from '../prompt/VocabularyEnrichmentPrompt';
@@ -15,7 +14,6 @@ import { DailyLearningSummarySchema } from '../schema/DailyLearningSummarySchema
 import {
   ChatEvent,
   ChatInput,
-  ExplainedExpressionResult,
   DailyLearningSummaryGeneration,
   DailyLearningSummaryInput,
   GrammarAnalysis,
@@ -90,31 +88,6 @@ export class AISDKProductAIService extends ProductAIService {
 
     yield { type: 'message.start', messageId: input.messageId };
 
-    const automaticallyExplained: ExplainedExpressionResult[] = [];
-    const automaticallyExplainedByText = new Map<string, ExplainedExpressionResult>();
-    for (const [ index, text ] of (input.requiredExpressions ?? []).entries()) {
-      if (!input.tools) break;
-      const toolCallId = `auto-explain-${input.messageId}-${index + 1}`;
-      const value = { text, context: input.content };
-      try {
-        const explained = await input.tools.explainExpression(value);
-        if (!explained) continue;
-        automaticallyExplained.push(explained);
-        automaticallyExplainedByText.set(text.normalize('NFKC').trim().toLocaleLowerCase('en-US'), explained);
-        yield { type: 'tool.call', toolCallId, name: 'explain_expression', input: value };
-        yield { type: 'tool.result', toolCallId, output: explained };
-      } catch (error) {
-        this.aiLogger.warn(
-          '[ai-tool] automatic explain_expression failed messageId=%s input=%j err=%s',
-          input.messageId, value, error instanceof Error ? error.message : String(error),
-        );
-        yield {
-          type: 'tool.result', toolCallId,
-          output: { ok: false, error: { code: 'EXPRESSION_EXPLANATION_FAILED' } },
-        };
-      }
-    }
-
     const messages: PromptMessage[] = [
       ...input.history,
       { role: 'user', content: input.content },
@@ -149,74 +122,22 @@ export class AISDKProductAIService extends ProductAIService {
 
     const result = streamText({
       model: resolved.model,
-      system: [ buildConversationSystemPrompt({
+      system: buildConversationSystemPrompt({
         topic: input.topic,
         scene: input.scene,
         learner: input.learner,
         conversationState: input.conversationState,
         summary,
-      }), automaticallyExplained.length ? [
-        '[Automatically explained expressions: trusted tool results]',
-        'These expressions were already explained and saved before this reply. Use their English expression naturally and do not call explain_expression for them again.',
-        JSON.stringify(automaticallyExplained),
-      ].join('\n') : '' ].filter(Boolean).join('\n\n'),
+      }),
       messages: chatMessages,
       abortSignal: input.signal,
-      tools: input.tools ? {
-        explain_expression: tool({
-          description: 'Explain and save a word or short expression to the learner\'s vocabulary book. `text` may be an English expression or the exact Chinese fragment the learner used; `context` contains the source sentence.',
-          inputSchema: z.object({
-            text: z.string().trim().min(1)
-              .max(500),
-            context: z.string().trim().max(2000),
-          }),
-          execute: async value => {
-            const startedAt = Date.now();
-            try {
-              const cached = automaticallyExplainedByText.get(
-                value.text.normalize('NFKC').trim().toLocaleLowerCase('en-US'),
-              );
-              if (cached) return cached;
-              const result = await input.tools?.explainExpression(value);
-              this.aiLogger.info(
-                '[ai-tool] explain_expression ok messageId=%s ms=%d input=%j',
-                input.messageId, Date.now() - startedAt, value,
-              );
-              return result;
-            } catch (error) {
-              this.aiLogger.warn(
-                '[ai-tool] explain_expression failed messageId=%s ms=%d input=%j err=%s',
-                input.messageId, Date.now() - startedAt, value,
-                error instanceof Error ? error.message : String(error),
-              );
-              return { ok: false, error: { code: 'EXPRESSION_EXPLANATION_FAILED' } };
-            }
-          },
-        }),
-      } : undefined,
-      stopWhen: input.tools ? stepCountIs(4) : undefined,
     });
-    let finished = false;
-    const pendingToolCalls = new Map<string, Extract<ChatEvent, { type: 'tool.call' }>>();
+    let doneEvent: Extract<ChatEvent, { type: 'message.done' }> | undefined;
     for await (const part of result.fullStream) {
       if (part.type === 'text-delta') {
         yield { type: 'message.delta', messageId: input.messageId, delta: part.text };
-      } else if (part.type === 'tool-call') {
-        pendingToolCalls.set(part.toolCallId, {
-          type: 'tool.call',
-          toolCallId: part.toolCallId,
-          name: part.toolName,
-          input: part.input,
-        });
-      } else if (part.type === 'tool-result') {
-        const call = pendingToolCalls.get(part.toolCallId);
-        pendingToolCalls.delete(part.toolCallId);
-        if (part.output === null) continue;
-        if (call) yield call;
-        yield { type: 'tool.result', toolCallId: part.toolCallId, output: part.output };
       } else if (part.type === 'finish') {
-        finished = true;
-        yield {
+        doneEvent = {
           type: 'message.done',
           messageId: input.messageId,
           usage: {
@@ -233,7 +154,9 @@ export class AISDKProductAIService extends ProductAIService {
       }
     }
 
-    if (!finished) throw new Error('AI stream ended without a finish event');
+    if (!doneEvent) throw new Error('AI stream ended without a finish event');
+
+    yield doneEvent;
   }
 
   async analyzeGrammar(input: GrammarAnalysisInput): Promise<GrammarAnalysis> {

@@ -241,6 +241,8 @@ export class FakeProductAIService implements ProductAIService {
   };
   vocabularyFailure?: Error;
   vocabularyCalls = 0;
+  vocabularyStarted?: () => void;
+  vocabularyBarrier?: Promise<void>;
   translation: TranslationResult = { translation: '这是一条翻译。' };
   translationFailure?: Error;
   translationCalls = 0;
@@ -274,20 +276,6 @@ export class FakeProductAIService implements ProductAIService {
         foldedUntil: this.summaryUpdate.foldedUntil,
       };
     }
-    const requiredExpression = input.requiredExpressions?.[0];
-    if (input.tools && (requiredExpression || /how to say|怎么说|怎么表达/i.test(input.content))) {
-      const explained = await input.tools.explainExpression({
-        text: requiredExpression ?? '差点迟到',
-        context: input.content,
-      });
-      if (explained) {
-        yield {
-          type: 'tool.call', toolCallId: 'tool-explain', name: 'explain_expression',
-          input: { text: requiredExpression ?? '差点迟到', context: input.content },
-        };
-        yield { type: 'tool.result', toolCallId: 'tool-explain', output: explained };
-      }
-    }
     for (const delta of this.deltas) {
       yield { type: 'message.delta', messageId: input.messageId, delta };
     }
@@ -308,6 +296,8 @@ export class FakeProductAIService implements ProductAIService {
 
   async enrichVocabulary(): Promise<VocabularyEnrichment | null> {
     this.vocabularyCalls += 1;
+    this.vocabularyStarted?.();
+    await this.vocabularyBarrier;
     if (this.vocabularyFailure) throw this.vocabularyFailure;
     return this.vocabularyEnrichment;
   }

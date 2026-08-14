@@ -224,8 +224,6 @@ POST /api/v1/messages/:id/translation
 ```text
 message.start
 message.delta
-tool.call
-tool.result
 correction.ready
 message.done
 error
@@ -277,7 +275,7 @@ POST   /api/v1/reviews/:vocabularyId/answer
 
 答题请求只接受 `{ result, clientRequestId }`，不接受客户端提交数字评分。相同 `clientRequestId` 重放已有结果，不重复推进复习状态；`again` 由客户端放回本轮队尾。
 
-生词来源消息必须属于当前用户，选中内容必须存在于消息正文。词汇补全使用 `generateText + Output.object + Zod`，失败限重试一次。`explain_expression` 与 `add_vocabulary` 通过 AI SDK Tool 执行，工具事件随消息保存并可在幂等重放时恢复。
+生词来源消息必须属于当前用户，选中内容必须存在于消息正文。词汇补全使用 `generateText + Output.object + Zod`，失败限重试一次。聊天模型不挂载词汇 Tool；对话中的中文表达由 `ConversationService.extractEmbeddedChineseExpressions()` 确定性检测，支持 `How do I say "散心" in English`、`for "散心"`、`"散心" means ...` 及普通英文句子夹中文。服务端以后台 Promise 执行 `enrichExpression() → addFromConversation()`，不等待任务完成就继续聊天流；生成或入库失败只记录 warning。
 
 ### 6.5 Memory
 

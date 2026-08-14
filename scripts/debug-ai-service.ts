@@ -156,36 +156,6 @@ async function debugChat(service: AISDKProductAIService) {
   if (index === 0) console.log('  (no events)');
 }
 
-async function debugChatTool(service: AISDKProductAIService) {
-  banner('chat with tool calls ("xxx怎么说")');
-  const stream = service.chat({
-    messageId: 'debug-msg-tool',
-    userId: 'debug-user',
-    conversationId: 'debug-conv-1',
-    topic: 'Daily life',
-    history: [],
-    content: '"差点迟到" 怎么说？',
-    learner: { englishLevel: 'B1' },
-    tools: {
-      explainExpression: async input => {
-        console.log(`\n  🔧 explainExpression("${input.text}")`);
-        const result = await service.enrichVocabulary({
-          text: input.text,
-          context: input.context,
-        });
-        if (!result) return null;
-        console.log(`  🔧 → ${input.text} (${result.cnMeaning})`);
-        return { vocabularyId: 'v-debug', expression: input.text, ...result };
-      },
-    },
-  });
-
-  let index = 0;
-  for await (const event of stream) {
-    printEvent(event, index++);
-  }
-}
-
 async function debugAnalyzeGrammar(service: AISDKProductAIService) {
   banner('analyzeGrammar');
   const cases = [
@@ -301,7 +271,6 @@ async function main() {
   const methods: Array<{ name: string; fn: (s: AISDKProductAIService) => Promise<void> }> = [
     { name: 'createWelcome', fn: debugCreateWelcome },
     { name: 'chat', fn: debugChat },
-    { name: 'chatTool', fn: debugChatTool },
     { name: 'analyzeGrammar', fn: debugAnalyzeGrammar },
     { name: 'enrichVocabulary', fn: debugEnrichVocabulary },
     { name: 'translate', fn: debugTranslate },

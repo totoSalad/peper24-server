@@ -69,23 +69,20 @@ POST /api/v1/conversations/:id/messages/stream
 │           └── 中断过 → resume 重新生成       │
 │                                              │
 ├─ 5. 并行启动 ───────────────────────────────┘
-│     ├── ai.chat()          (主流程,流式)
-│     └── ai.analyzeGrammar() (并行,catch兜底)
+│     ├── ai.chat()                  (主流程,流式)
+│     ├── ai.analyzeGrammar()        (并行,catch兜底)
+│     └── saveVocabularyInBackground (后台执行,失败不阻塞 chat)
 │
 ├─ 6. AI 流式主循环
 │     for await (event of ai.chat())
 │     │
 │     ├── message.start   → SSE: event=message.start
 │     ├── message.delta   → 累积内容 + 透传 SSE
-│     ├── tool.call       → 记录到 toolEvents
-│     │     ├── explainExpression → VocabularyService
-│     │     └── addVocabulary    → VocabularyService
-│     ├── tool.result     → 记录 + 透传 SSE
 │     ├── message.done    → 记录 usage → 退出循环
 │     └── error           → 抛异常
 │
 ├─ 8. 完成阶段 (completeAssistant)
-│     持久化内容 + grammar 分组 + toolEvents
+│     持久化内容 + grammar 分组
 │     → 返回 corrections[]
 │
 ├─ 9. SSE 收尾事件
@@ -103,11 +100,17 @@ POST /api/v1/conversations/:id/messages/stream
 |---|---|
 | `message.start` | AI 开始生成 |
 | `message.delta` | 增量文本 |
-| `tool.call` | AI 调用工具 (查词/加生词) |
-| `tool.result` | 工具执行结果 |
 | `correction.ready` | 语法纠正建议 |
 | `message.done` | 回复完成 (含 token 用量) |
 | `error` | 错误 (含 code + retryable) |
+
+### 对话中的生词自动收集
+
+- 聊天模型不挂载词汇 Tool，SSE 新链路不产生 `tool.call` / `tool.result`。
+- `ConversationService` 在调用 `ai.chat()` 前检测用户消息；一般要求至少两个英文词，另外明确支持 `for "散心"` 这种简写。
+- `How do I say "散心" in English`、`"散心" means ...` 和普通英文句子夹中文都会提取中文表达；`怎么说` 等请求标记自身不会被当成生词。
+- 人名和“called X in Chinese”类标签会被过滤；同轮去重，最多提取 3 个。
+- 每个表达立即启动 `enrichExpression() → addFromConversation()` 后台 Promise，不被 chat 或 `message.done` await。生成或入库失败只记录 warning。
 
 ## TranslationService 翻译流程
 
