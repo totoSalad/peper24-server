@@ -107,4 +107,24 @@ describe('generateTextWithRetry', () => {
     assert.equal(model.doGenerateCalls.length, 1);
     assert.equal(result.text, 'Hello there!');
   });
+
+  it('forwards the requested reasoning strength to the model', async () => {
+    const model = new MockLanguageModelV3({
+      provider: 'mock-provider',
+      modelId: 'mock-chat',
+      doGenerate: [ generateResult(validVocabularyJson) ],
+    });
+
+    await generateTextWithRetry({
+      model: model as LanguageModel,
+      prompt: 'Enrich the word.',
+      output: vocabularyOutput,
+      reasoning: 'none',
+    });
+
+    assert.equal(
+      (model.doGenerateCalls[0] as unknown as { reasoning?: string }).reasoning,
+      'none',
+    );
+  });
 });
