@@ -26,6 +26,7 @@
     "migrate": "node scripts/migrate.mjs",
     "debug:prompt:grammar": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/prompt-debug/grammar/debug.mjs",
     "debug:prompt:memory": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/prompt-debug/memory/debug.mjs",
+    "debug:prompt:conversation": "node --experimental-transform-types --disable-warning=ExperimentalWarning --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/prompt-debug/conversation/debug.mjs",
     "debug:prompt:memory:real": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/prompt-debug/memory/debug.mjs --fixture scripts/prompt-debug/memory/fixtures/01KZNJ2ZYNKW60G3H6FCFJ2ZVP.local.json --allow-real-data",
     "debug:prompt:translation": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/prompt-debug/translation/debug.mjs",
     "debug:prompt:vocabulary": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/prompt-debug/vocabulary/debug.mjs",

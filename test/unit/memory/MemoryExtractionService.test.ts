@@ -87,7 +87,7 @@ describe('MemoryExtractionService', () => {
       summary: 'Lives in Shanghai',
       normalizedKey: 'home-city',
       sourceMessageIds: [ 'u3' ],
-      scores: { stability: 2, futureValue: 2, personalImportance: 1, explicitness: 2 },
+      scores: { futureValue: 2, personalImportance: 1, explicitness: 2 },
       penalties: [],
       explicitRemember: false,
       inferredOrHypothetical: false,
@@ -100,7 +100,7 @@ describe('MemoryExtractionService', () => {
       summary: 'Treats cooking as a main hobby',
       normalizedKey: 'cooking-hobby',
       sourceMessageIds: [ 'u5' ],
-      scores: { stability: 2, futureValue: 2, personalImportance: 1, explicitness: 2 },
+      scores: { futureValue: 2, personalImportance: 1, explicitness: 2 },
       penalties: [],
       explicitRemember: false,
       inferredOrHypothetical: false,
@@ -120,13 +120,13 @@ describe('MemoryExtractionService', () => {
     ai.memoryExtraction = { decisions: [{
       shouldSave: true, layer: 'long_term', type: 'profile', summary: 'Lives in Shanghai',
       normalizedKey: 'home-city', sourceMessageIds: [ 'u1' ],
-      scores: { stability: 2, futureValue: 2, personalImportance: 1, explicitness: 2 },
+      scores: { futureValue: 2, personalImportance: 1, explicitness: 2 },
       penalties: [], explicitRemember: false, inferredOrHypothetical: false,
       containsSecret: false, reason: 'Stable profile',
     }, {
       shouldSave: true, layer: 'long_term', type: 'preference', summary: 'Likes fried eggs',
       normalizedKey: 'fried-eggs', sourceMessageIds: [ 'u2' ],
-      scores: { stability: 1, futureValue: 0, personalImportance: 0, explicitness: 2 },
+      scores: { futureValue: 0, personalImportance: 0, explicitness: 2 },
       penalties: [ 'too_granular' ], explicitRemember: false, inferredOrHypothetical: false,
       containsSecret: false, reason: 'Ordinary food detail',
     }] };
@@ -149,7 +149,7 @@ describe('MemoryExtractionService', () => {
     ai.memoryExtraction = { decisions: [{
       shouldSave: true, layer: 'long_term', type: 'profile', summary: 'Lives in Shanghai',
       normalizedKey: 'home-city', sourceMessageIds: [ 'u1' ],
-      scores: { stability: 2, futureValue: 2, personalImportance: 1, explicitness: 2 },
+      scores: { futureValue: 2, personalImportance: 1, explicitness: 2 },
       penalties: [], explicitRemember: false, inferredOrHypothetical: false,
       containsSecret: false, reason: 'Stable profile',
     }] };

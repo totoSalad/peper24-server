@@ -26,6 +26,32 @@ pnpm run debug:prompt:memory:real
 真实调用使用 `DASHSCOPE_API_KEY`，模型可通过 `BAILIAN_MODEL` 覆盖，默认是
 `qwen3.7-flash`。脚本以非零状态退出表示至少一个场景未满足预期，方便反复调整 Prompt。
 
+## 主对话 Rubric Eval
+
+```bash
+# DeepSeek 生成主对话回复，Qwen 作为独立 Judge；每个场景默认运行一轮
+pnpm run debug:prompt:conversation
+
+# 只跑一个多轮上下文边界场景，或交换候选与 Judge 模型
+pnpm run debug:prompt:conversation -- --case latest-fact-wins
+pnpm run debug:prompt:conversation -- --candidate qwen --judge deepseek --runs 3
+
+# 不调用模型，只检查 system prompt、上一轮 messages 和场景配置
+pnpm run debug:prompt:conversation -- --dry-run --print-prompt
+
+# 输出包含候选回复、逐项得分、理由和 token 用量的 JSON
+pnpm run debug:prompt:conversation -- --json
+pnpm run debug:prompt:conversation -- --runs 3 --output scripts/prompt-debug/conversation/results/conversation-rubric-eval.json
+
+# 固定已有候选回复，只重新验证 Judge（用于 Judge Prompt/Schema 回归）
+pnpm run debug:prompt:conversation -- --rejudge scripts/prompt-debug/conversation/results/conversation-rubric-eval.json --output scripts/prompt-debug/conversation/results/conversation-rubric-rejudge.json
+```
+
+Judge 按上下文连贯性、表达自然度、是否鼓励用户继续交流三个维度分别打 0～2 分。
+总分 `>= 5` 即通过，因此 5/6 和 6/6 都会通过；模型调用失败或结构化评分失败也记为失败并
+以非零状态退出。合成 demo 都包含多条历史 `messages`，覆盖未完话题、事实改口、偏好更新和
+用户明确边界，特别检查回复是否会继续使用已经失效的上下文。
+
 ## 词汇增强模型对比
 
 ```bash

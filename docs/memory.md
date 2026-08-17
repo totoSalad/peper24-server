@@ -34,7 +34,7 @@ memory/
 | 类型 | 用途 | 过期时间 |
 |---|---|---|
 | `profile` | 用户画像 (年龄、职业、英语等级等) | 不自动过期 |
-| `preference` | 稳定、可跨场景复用的偏好 | 不自动过期 |
+| `preference` | 有个人意义、可跨场景复用的偏好 | 不自动过期 |
 | `significant_fact` | 重要事实 (生活事件、目标等) | 不自动过期 |
 | `short_term` | 近期可能有用的信息 | AI 选择 7、14 或 30 天 |
 
@@ -112,7 +112,7 @@ MemoryService.applyCandidates(userId, candidates)
 
 AI 不输出 `content`。新建记录的 `content` 始终取最早来源消息的数据库原文；同 key 合并时永远不覆盖已有 `content`，只更新 `summary` 和来源。
 
-准入分由服务端复算：`stability + futureValue + personalImportance + explicitness - penalties.length × 2`。长期记忆通常要求分数至少 6，临时记忆至少 2；明确要求记住可跳过分数门槛，但秘密信息仍拒绝。
+准入分由服务端复算：`futureValue + personalImportance + explicitness - penalties.length × 2`。长期记忆通常要求分数至少 4，且 `futureValue >= 1`、`explicitness = 2`；临时记忆至少 2 分。明确要求记住可跳过分数门槛，但秘密信息仍拒绝。
 
 ### 3. 记忆 Key 归一化
 
