@@ -4,10 +4,6 @@ import { AppError } from '../../system/error/AppError';
 import { Clock } from '../../system/service/SystemPorts';
 import { ConversationRepository } from './ConversationPorts';
 
-export function translationTarget(content: string): 'Chinese' | 'English' {
-  return /[\u3400-\u9fff]/u.test(content) ? 'English' : 'Chinese';
-}
-
 @SingletonProto({ accessLevel: AccessLevel.PUBLIC })
 export class TranslationService {
   private readonly inFlight = new Map<string, Promise<string>>();
@@ -38,7 +34,7 @@ export class TranslationService {
   private async generateAndSave(userId: string, messageId: string, content: string): Promise<string> {
     let generated;
     try {
-      generated = await this.ai.translate({ content, targetLanguage: translationTarget(content) });
+      generated = await this.ai.translate({ content, targetLanguage: 'Chinese' });
     } catch {
       throw new AppError('TRANSLATION_FAILED', '暂时无法翻译，请稍后重试', 502);
     }

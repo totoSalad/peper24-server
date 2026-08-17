@@ -25,14 +25,15 @@
     "clean": "tsc -b --clean",
     "migrate": "node scripts/migrate.mjs",
     "debug:prompt:grammar": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/prompt-debug/grammar/debug.mjs",
-    "debug:prompt:grammar:report": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/prompt-debug/grammar/render-report.mjs",
     "debug:prompt:memory": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/prompt-debug/memory/debug.mjs",
     "debug:prompt:memory:real": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/prompt-debug/memory/debug.mjs --fixture scripts/prompt-debug/memory/fixtures/01KZNJ2ZYNKW60G3H6FCFJ2ZVP.local.json --allow-real-data",
+    "debug:prompt:translation": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/prompt-debug/translation/debug.mjs",
     "debug:prompt:vocabulary": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/prompt-debug/vocabulary/debug.mjs",
     "prepublishOnly": "pnpm run clean && pnpm run tsc"
   },
   "dependencies": {
-    "@ai-sdk/deepseek": "^3.0.22",
+    "@ai-sdk/alibaba": "^2.0.32",
+    "@ai-sdk/deepseek": "^3.0.28",
     "@eggjs/scripts": "^4.0.0",
     "@eggjs/tegg": "^3.5.2",
     "@eggjs/tegg-aop-plugin": "^3.5.2",
@@ -65,7 +66,7 @@
     "typescript": "5"
   },
   "engines": {
-    "node": ">=20.18.1"
+    "node": ">=22"
   },
   "repository": {
     "type": "git",

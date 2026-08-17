@@ -27,7 +27,7 @@ Peper24 Server 为英语口语陪练 Web 应用提供账户、会话、AI 对话
 - 参数与 AI 结构校验：Zod
 - 数据库：MySQL 8 + Leoric，所有结构变化通过 Migration 管理
 - 临时状态：Redis 7，用于 Session、限流和短期锁
-- 文本 AI：Vercel AI SDK `ai` + `@ai-sdk/deepseek`
+- 文本 AI：Vercel AI SDK `ai` + `@ai-sdk/deepseek` + `@ai-sdk/alibaba`
 - 部署：Docker Compose；同一个镜像通过运行角色区分 API 与 Worker
 
 鉴权采用 Redis Session + HttpOnly Cookie，不使用存放在浏览器 `localStorage` 的 JWT。
@@ -50,7 +50,7 @@ Egg.js + TEGG
     └── ai：ProductAIService、Prompt、模型 Provider
 
 基础资源：MySQL + Redis
-外部服务：DeepSeek
+外部服务：DeepSeek 或阿里云百炼
 ```
 
 服务端保持模块化单体。模块之间通过公开 Service 或明确的接口协作，不通过 HTTP/RPC 在同一进程内互相调用。
@@ -135,7 +135,7 @@ Service 不写死 Redis、邮件或 AI 实现。外部能力使用可注入的�
 
 - 不启动 Egg；
 - 不连接 MySQL、Redis；
-- 不请求 DeepSeek 或邮件；
+- 不请求 DeepSeek、阿里云百炼或邮件；
 - 使用 `InMemoryRepository`、`FakeClock`、`FixedIdGenerator`、`FakeProductAIService`；
 - 重点覆盖 Service 和纯业务规则。
 
@@ -148,7 +148,7 @@ Service 不写死 Redis、邮件或 AI 实现。外部能力使用可注入的�
 
 ### 5.3 External contract
 
-真实厂商契约测试不进入默认测试命令。只有显式提供测试密钥时，才验证 DeepSeek。
+真实厂商契约测试不进入默认测试命令。只有显式提供测试密钥时，才验证 DeepSeek 或阿里云百炼。
 
 每个 Bug 必须先添加能复现问题的失败测试，再修复实现。
 
@@ -338,10 +338,14 @@ Prompt 固定按以下顺序组装：
 运行时选择由 `AI_TEXT_PROVIDER` 明确控制：
 
 - `development`：本地确定性实现，不访问外部模型；
+- `bailian`：通过 `@ai-sdk/alibaba` 使用 `BAILIAN_MODEL`，默认 `qwen3.7-flash`；
 - `deepseek`：通过 `@ai-sdk/deepseek` 使用 `DEEPSEEK_MODEL`，默认 `deepseek-chat`；
-- 生产环境未设置 `AI_TEXT_PROVIDER` 时默认使用 `deepseek`，缺少密钥直接报告不可用，不降级到开发实现。
+- 翻译是独立模型用途：外部 AI 模式下固定通过百炼使用 `BAILIAN_TRANSLATION_MODEL`，默认
+  `qwen3.7-flash`，并关闭 reasoning；其他能力继续遵循 `AI_TEXT_PROVIDER`；
+- 生产环境未设置 `AI_TEXT_PROVIDER` 时默认使用 `deepseek`；翻译仍按独立用途走百炼。
+  缺少相应密钥时直接报告不可用，不降级到开发实现。
 
-业务模块看不到 AI SDK 或 DeepSeek 类型。Provider 只把 `fullStream` 中的文本增量、工具事件、完成原因和 Token 用量转换成稳定的产品事件。当前 `ai_usage_logs` 记录成功完成的聊天调用；欢迎语用量、失败调用延迟和错误码在监控切片补充。
+业务模块看不到 AI SDK、DeepSeek 或百炼类型。Provider 只把 `fullStream` 中的文本增量、工具事件、完成原因和 Token 用量转换成稳定的产品事件。当前 `ai_usage_logs` 记录成功完成的聊天调用；欢迎语用量、失败调用延迟和错误码在监控切片补充。
 
 ## 7. 数据库
 
@@ -393,6 +397,7 @@ APP_KEYS
 MYSQL_HOST MYSQL_PORT MYSQL_DATABASE MYSQL_USER MYSQL_PASSWORD
 REDIS_HOST REDIS_PORT REDIS_PASSWORD
 AI_TEXT_PROVIDER
+DASHSCOPE_API_KEY BAILIAN_MODEL BAILIAN_TRANSLATION_MODEL BAILIAN_BASE_URL
 DEEPSEEK_API_KEY DEEPSEEK_MODEL DEEPSEEK_BASE_URL
 DAILY_CHAT_TOKEN_LIMIT
 DIRECTMAIL_*
@@ -452,7 +457,7 @@ API 与 Worker 使用同一镜像。部署时先执行 Migration，再替换 API
 2. Infrastructure：配置、MySQL、Redis、Migration；
 3. Account：直接注册、登录、Session、个人资料；
 4. Conversation：会话、消息、Fake AI 流式协议、幂等（已完成）；
-5. AI：DeepSeek Provider、分层 Prompt、真实文字聊天和用量记录（已完成）；
+5. AI：DeepSeek/百炼可配置 Provider、分层 Prompt、真实文字聊天和用量记录（已完成）；
 6. Grammar：并行分析、固定分类、第二次纠正和多纠正重放（已完成）；
 7. Vocabulary：收藏、词义补全、工具调用、复习和 SM-2（已完成）；
 8. Memory：提取、冲突、过期、Prompt 注入和用户管理（业务切片已完成）；

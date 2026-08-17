@@ -6,6 +6,8 @@ export interface ResolvedTextModel {
   modelId: string;
 }
 
+export type TextModelPurpose = 'default' | 'translation';
+
 export abstract class TextModelProvider {
-  abstract resolve(): ResolvedTextModel | null;
+  abstract resolve(purpose?: TextModelPurpose): ResolvedTextModel | null;
 }

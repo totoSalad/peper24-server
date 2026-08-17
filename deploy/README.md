@@ -65,7 +65,9 @@ openssl rand -hex 32
 
 - `ALLOWED_ORIGINS` 改为真实 HTTPS 域名，例如 `https://peper24.example`；
 - `APP_KEYS`、`VERIFICATION_CODE_SECRET`、MySQL 两个密码和 Redis 密码全部独立生成；
-- `DEEPSEEK_API_KEY` 必须使用新建的生产 Key。
+- `AI_TEXT_PROVIDER` 明确设为 `deepseek` 或 `bailian`；
+- `DASHSCOPE_API_KEY` 必须配置，翻译固定使用百炼 `qwen3.7-flash`；如果其他 AI 能力选择
+  DeepSeek，还需配置新建的 `DEEPSEEK_API_KEY`。
 
 密码建议只使用字母和数字的长随机字符串，避免 Compose 对 `$` 等字符做变量展开。
 

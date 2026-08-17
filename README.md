@@ -2,7 +2,7 @@
 
 Peper24 是一个面向英语口语学习者的 AI 对话服务端。它不只负责把消息发给模型，而是把长期稳定的 Prompt、受预算约束的会话上下文，以及可追溯、可纠正的用户记忆组合成一套完整的对话系统。
 
-技术栈：Egg.js 4、TEGG、TypeScript、Vercel AI SDK、DeepSeek、MySQL 8、Leoric、Redis 7。
+技术栈：Egg.js 4、TEGG、TypeScript、Vercel AI SDK、DeepSeek、阿里云百炼（Qwen）、MySQL 8、Leoric、Redis 7。
 
 ## 核心设计
 
@@ -106,7 +106,7 @@ test/integration/                # HTTP、SSE、MySQL、Redis 集成测试
 
 ## 本地启动
 
-要求 Node.js 20.18+、pnpm 和 Docker。
+要求 Node.js 22+、pnpm 和 Docker。
 
 ```bash
 cp .env.example .env
@@ -116,7 +116,7 @@ pnpm migrate
 pnpm dev
 ```
 
-Egg 不会自动读取 `.env`，请通过 shell、direnv 或 IDE 注入环境变量。本地默认使用确定性的 `development` AI Provider；联调真实模型时再设置 `AI_TEXT_PROVIDER=deepseek` 和自己的 `DEEPSEEK_API_KEY`。
+Egg 不会自动读取 `.env`，请通过 shell、direnv 或 IDE 注入环境变量。本地默认使用确定性的 `development` AI Provider，生产未显式配置时默认使用 DeepSeek；联调真实模型时也可将 `AI_TEXT_PROVIDER` 设为 `deepseek` 或 `bailian`。翻译固定通过百炼使用 `qwen3.7-flash`，因此外部 AI 模式都需要注入 `DASHSCOPE_API_KEY`；使用默认 DeepSeek 时还需注入 `DEEPSEEK_API_KEY`。
 
 服务默认监听 `http://127.0.0.1:7001`：
 

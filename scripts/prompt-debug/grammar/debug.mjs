@@ -2,12 +2,13 @@ import 'dotenv/config';
 import { createAlibaba } from '@ai-sdk/alibaba';
 import { createDeepSeek } from '@ai-sdk/deepseek';
 import { Output } from 'ai';
-import { writeFile } from 'node:fs/promises';
+import { mkdir, writeFile } from 'node:fs/promises';
+import { dirname } from 'node:path';
 
 import { generateTextWithRetry } from '../../../app/module/ai/provider/AISDKTextGenerator.ts';
 import { grammarCases } from './cases.mjs';
 import { grammarPromptVariants } from './prompts.mjs';
-import { buildReportData, defaultHtmlPath, writeBenchmarkHtml } from './report.mjs';
+import { buildReportData } from './report.mjs';
 import { GrammarAnalysisBenchmarkSchema } from './schema.mjs';
 
 globalThis.AI_SDK_LOG_WARNINGS = false;
@@ -42,7 +43,6 @@ function parseArgs(argv) {
     printPrompt: argv.includes('--print-prompt'),
     json: argv.includes('--json'),
     outputPath: valueAfter(argv, '--output'),
-    htmlOutputPath: valueAfter(argv, '--html-output'),
   };
 }
 
@@ -283,11 +283,9 @@ async function main() {
   const payload = { targets, prompts: promptDefinitions, reasoning: REASONING, runs: options.runs, summary, results };
   payload.report = buildReportData(payload);
   if (options.outputPath) {
+    await mkdir(dirname(options.outputPath), { recursive: true });
     await writeFile(options.outputPath, `${JSON.stringify(payload, null, 2)}\n`, 'utf8');
     console.log(`\n逐次结果已写入 ${options.outputPath}`);
-    const htmlPath = options.htmlOutputPath ?? defaultHtmlPath(options.outputPath);
-    await writeBenchmarkHtml(payload, htmlPath);
-    console.log(`HTML 报告已写入 ${htmlPath}`);
   } else if (options.json) {
     console.log(JSON.stringify(payload, null, 2));
   } else {

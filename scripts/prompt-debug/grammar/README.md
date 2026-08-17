@@ -12,18 +12,12 @@ pnpm run debug:prompt:grammar -- \
   --target deepseek-flash \
   --prompt baseline,optimized \
   --runs 10 \
-  --output /tmp/grammar-benchmark.json
+  --output scripts/prompt-debug/grammar/results/grammar-benchmark.json
 
 # 检查最终 Prompt，不调用模型
 pnpm run debug:prompt:grammar -- --dry-run --print-prompt
 ```
 
-传入 `--output result.json` 会同时生成 `result.html`。JSON 与 HTML 包含正确数量和比例、
-调用成功率、平均耗时、p50/p95、Token、逐 case 指标、错误 case 原始输出和原因分类，
-以及相对同组总体达到 1.5 倍阈值的异常慢 case。
-
-已有 JSON 可以重新生成 HTML：
-
-```bash
-pnpm run debug:prompt:grammar:report -- /tmp/grammar-benchmark.json
-```
+传入 `--output result.json` 会生成包含逐次结果与汇总指标的 JSON。使用
+`benchmark-llm-latency` skill 从该 JSON 生成同名 HTML 报告；报告模板由 skill 统一维护，
+仓库不保存重复模板。运行产物统一放在本目录的 `results/` 下，并由 `.gitignore` 排除。

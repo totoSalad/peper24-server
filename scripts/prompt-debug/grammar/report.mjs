@@ -1,9 +1,3 @@
-import { readFile, writeFile } from 'node:fs/promises';
-import { dirname, extname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
-
-const templatePath = join(dirname(fileURLToPath(import.meta.url)), 'report-template.html');
-
 function percentile(values, ratio) {
   if (!values.length) return null;
   const sorted = [ ...values ].sort((a, b) => a - b);
@@ -131,21 +125,4 @@ export function buildReportData(payload, slowRatio = 1.5) {
     failureCases: buildFailureCases(payload),
     slowCases: buildSlowCases(payload, caseSummaries, slowRatio),
   };
-}
-
-export function defaultHtmlPath(jsonPath) {
-  return extname(jsonPath).toLowerCase() === '.json'
-    ? `${jsonPath.slice(0, -5)}.html`
-    : `${jsonPath}.html`;
-}
-
-export async function writeBenchmarkHtml(payload, htmlPath) {
-  const template = await readFile(templatePath, 'utf8');
-  const serialized = JSON.stringify(payload)
-    .replaceAll('<', '\\u003c')
-    .replaceAll('\u2028', '\\u2028')
-    .replaceAll('\u2029', '\\u2029');
-  const html = template.replace('__BENCHMARK_DATA__', serialized);
-  if (html === template) throw new Error('HTML 报告模板缺少 __BENCHMARK_DATA__ 占位符');
-  await writeFile(htmlPath, html, 'utf8');
 }

@@ -22,7 +22,7 @@ ai/
 │   └── VocabularyEnrichmentPrompt.ts # 词汇增强提示词
 ├── provider/                         # 具体实现
 │   ├── TextModelProvider.ts          # 文本模型抽象
-│   ├── DeepSeekTextModelProvider.ts  # DeepSeek 实现 (生产)
+│   ├── ConfiguredTextModelProvider.ts # DeepSeek / 百炼运行时选择 (生产)
 │   ├── AISDKProductAIService.ts      # 基于 AI SDK 的 ProductAIService 实现 (生产)
 │   └── DevelopmentProductAIService.ts # 开发环境 Mock 实现
 ├── schema/                           # AI 输出的 Zod 校验
@@ -93,15 +93,18 @@ TranslationService  (enrichExpression)
            ┌────────────┴────────────┐
            ▼                         ▼
 AISDKProductAIService      DevelopmentProductAIService
-(DeepSeek, 生产环境)        (Mock, 开发环境)
+(DeepSeek/百炼, 生产环境)   (Mock, 开发环境)
 ```
 
 ## 两种 Provider 实现
 
 | 实现 | 环境 | 行为 |
 |---|---|---|
-| `AISDKProductAIService` | 生产 | 调用 DeepSeek API，真实的流式对话 |
+| `AISDKProductAIService` | 生产 | 调用 DeepSeek 或阿里云百炼 API，真实的流式对话 |
 | `DevelopmentProductAIService` | 开发 | 返回固定假数据，不消耗 API 额度 |
+
+生产 Provider 支持按用途选模型：聊天、语法、词汇和记忆遵循 `AI_TEXT_PROVIDER`；翻译固定
+通过百炼使用 `BAILIAN_TRANSLATION_MODEL`（默认 `qwen3.7-flash`），并关闭 reasoning。
 
 ## 数据流：一次对话中 AI 模块的角色
 

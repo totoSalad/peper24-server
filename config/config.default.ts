@@ -1,10 +1,9 @@
 import 'dotenv/config';
 import { EggAppConfig, EggAppInfo, PowerPartial } from 'egg';
 
-// DeepSeek has no native JSON Schema support, so the AI SDK runs structured
-// output in a compatibility mode (schema injected into the system message) and
-// emits a "compatibility" warning on EVERY analyzeGrammar / enrichVocabulary /
-// translate / extractMemories call. That is expected noise; drop it while still
+// Some OpenAI-compatible models run structured output in compatibility mode
+// (schema injected into the system message) and emit a "compatibility" warning.
+// That is expected noise; drop it while still
 // forwarding real warnings (deprecated, unsupported) to the default process
 // warning output. See `logWarnings` in the ai SDK.
 interface AIWarning {
