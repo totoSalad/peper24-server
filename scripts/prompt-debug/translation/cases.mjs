@@ -1,59 +1,72 @@
-/** 全部是合成数据，不包含真实用户内容。 */
 export const translationCases = [
   {
-    id: 'english-simple',
-    description: '英文日常句应自然翻译为中文',
-    input: {
-      content: 'I almost missed the train this morning.',
-      targetLanguage: 'Chinese',
-    },
-    expectation: {
-      mustMatch: [ /差点|险些/, /火车/ ],
-    },
+    id: 'short-en-zh',
+    description: '高频英译中短句',
+    input: { content: 'I would like a cup of coffee.', targetLanguage: 'Chinese' },
+    expectation: { includes: [ /咖啡/u ], excludes: [] },
   },
   {
-    id: 'chinese-colloquial',
-    description: '中文口语应自然翻译为英文',
-    input: {
-      content: '这个周末我想出去散散心。',
-      targetLanguage: 'English',
-    },
-    expectation: {
-      mustMatch: [ /weekend/i, /clear my (?:head|mind)|unwind|relax|get some fresh air|take a break/i ],
-    },
-  },
-  {
-    id: 'english-idiom',
-    description: '习语应按上下文翻译而不是逐字直译',
-    input: {
-      content: "I can't join you tonight, but I'll take a rain check.",
-      targetLanguage: 'Chinese',
-    },
-    expectation: {
-      mustMatch: [ /今晚/, /改天|下次|另约|再约|以后|延期|推迟/ ],
-      mustNotMatch: [ /雨.*支票|支票.*雨/ ],
-    },
+    id: 'short-zh-en',
+    description: '高频中译英短句',
+    input: { content: '我们下午三点开会。', targetLanguage: 'English' },
+    expectation: { includes: [ /(?:3|three)/iu, /meet/iu ], excludes: [] },
   },
   {
     id: 'names-and-numbers',
-    description: '翻译时应保留姓名、金额和数量',
+    description: '保留人名、年份和地名',
     input: {
-      content: 'Alice paid $24.50 for 3 notebooks.',
+      content: 'Alice moved to Shanghai in 2026.',
+      targetLanguage: 'Chinese',
+    },
+    expectation: { includes: [ /(?:Alice|[爱艾]丽丝)/iu, /2026/u, /上海/u ], excludes: [] },
+  },
+  {
+    id: 'list-formatting',
+    description: '保留多行列表格式',
+    input: {
+      content: 'Shopping list:\n- apples\n- milk',
       targetLanguage: 'Chinese',
     },
     expectation: {
-      mustMatch: [ /Alice|爱丽丝/i, /\$24\.50|24\.50\s*美元/, /3/, /笔记本/ ],
+      includes: [ /苹果/u, /牛奶/u ],
+      excludes: [],
+      validate: output => output.split('\n').filter(line => /^\s*-\s+/u.test(line)).length >= 2
+        ? []
+        : [ '未保留两行列表格式' ],
     },
   },
   {
-    id: 'multiline-formatting',
-    description: '多行列表压平也可接受，但内容必须完整',
+    id: 'weather-idiom',
+    description: '习语需要意译，不能字面翻译',
     input: {
-      content: '购物清单：\n- 牛奶\n- 全麦面包',
-      targetLanguage: 'English',
+      content: "It's raining cats and dogs outside.",
+      targetLanguage: 'Chinese',
+    },
+    expectation: { includes: [ /雨/u ], excludes: [ /猫/u, /狗/u ] },
+  },
+  {
+    id: 'encouragement-idiom',
+    description: '对话语气与习语语义',
+    input: {
+      content: '“Break a leg!” she said before the show.',
+      targetLanguage: 'Chinese',
     },
     expectation: {
-      mustMatch: [ /shopping list/i, /milk/i, /whole[- ]wheat bread/i ],
+      includes: [ /(?:好运|顺利|成功|加油)/u ],
+      excludes: [ /(?:断|摔).{0,2}腿/u ],
     },
   },
 ];
+
+export function evaluateTranslationCase(testCase, output) {
+  const errors = [];
+  if (!output.trim()) errors.push('输出为空');
+  for (const expected of testCase.expectation.includes) {
+    if (!expected.test(output)) errors.push(`缺少必要语义: ${expected}`);
+  }
+  for (const forbidden of testCase.expectation.excludes) {
+    if (forbidden.test(output)) errors.push(`出现错误字面语义: ${forbidden}`);
+  }
+  if (testCase.expectation.validate) errors.push(...testCase.expectation.validate(output));
+  return errors;
+}

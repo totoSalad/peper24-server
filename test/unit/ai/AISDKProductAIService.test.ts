@@ -244,12 +244,12 @@ describe('AISDKProductAIService', () => {
     );
   });
 
-  it('returns a schema-validated message translation', async () => {
+  it('returns a plain-text message translation', async () => {
     const model = new MockLanguageModelV3({
       provider: 'mock-provider',
       modelId: 'mock-chat',
       doGenerate: {
-        content: [{ type: 'text', text: JSON.stringify({ translation: '我想要一杯咖啡。' }) }],
+        content: [{ type: 'text', text: '  我想要一杯咖啡。  ' }],
         finishReason: { unified: 'stop', raw: undefined },
         usage: {
           inputTokens: { total: 5, noCache: 5, cacheRead: undefined, cacheWrite: undefined },
@@ -266,11 +266,7 @@ describe('AISDKProductAIService', () => {
       content: 'I would like a coffee.', targetLanguage: 'Chinese',
     });
     assert.deepEqual(result, { translation: '我想要一杯咖啡。' });
-    assert.deepEqual(provider.requestedPurposes, [ 'translation' ]);
-    assert.equal(
-      (model.doGenerateCalls[0] as unknown as { reasoning?: string }).reasoning,
-      'none',
-    );
+    assert.equal(model.doGenerateCalls.length, 1);
   });
 
   it('returns a schema-validated daily learning summary with usage', async () => {

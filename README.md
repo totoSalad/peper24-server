@@ -4,7 +4,11 @@ Peper24 Server 是面向英语口语学习者的 AI 对话后端。它负责会�
 
 技术栈：Egg.js 4、TEGG、TypeScript、Vercel AI SDK、DeepSeek、阿里云百炼（Qwen）、MySQL 8、Leoric、Redis 7。
 
-## 核心能力
+## 系统架构
+
+![Peper24 Server 架构图](static/peper24%20Server%20Architecture-2026-08-18-030540.png)
+
+## 核心设计
 
 - **Conversation**：会话历史、POST SSE 流式回复、请求幂等、中断恢复和每日 Token 限额；
 - **Adaptive Prompt**：固定陪练角色，并按 CEFR A1-C2 调整词汇、句法、回复长度和提问方式；

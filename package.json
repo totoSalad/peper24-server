@@ -30,6 +30,7 @@
     "debug:prompt:memory:real": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/prompt-debug/memory/debug.mjs --fixture scripts/prompt-debug/memory/fixtures/01KZNJ2ZYNKW60G3H6FCFJ2ZVP.local.json --allow-real-data",
     "debug:prompt:translation": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/prompt-debug/translation/debug.mjs",
     "debug:prompt:vocabulary": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/prompt-debug/vocabulary/debug.mjs",
+    "benchmark:translation-output": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/prompt-debug/translation/benchmark.mjs",
     "prepublishOnly": "pnpm run clean && pnpm run tsc"
   },
   "dependencies": {
