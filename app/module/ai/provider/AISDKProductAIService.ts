@@ -8,7 +8,6 @@ import { buildMemoryExtractionPrompt } from '../prompt/MemoryExtractionPrompt';
 import { buildDailyLearningSummaryPrompt } from '../prompt/DailyLearningSummaryPrompt';
 import { GrammarAnalysisSchema } from '../schema/GrammarAnalysisSchema';
 import { VocabularyEnrichmentSchema } from '../schema/VocabularyEnrichmentSchema';
-import { TranslationOutputSchema } from '../schema/TranslationSchema';
 import { MemoryExtractionSchema } from '../schema/MemoryExtractionSchema';
 import { DailyLearningSummarySchema } from '../schema/DailyLearningSummarySchema';
 import {
@@ -205,15 +204,10 @@ export class AISDKProductAIService extends ProductAIService {
       model: resolved.model,
       logger: this.aiLogger,
       label: 'translate',
-      output: Output.object({
-        name: 'MessageTranslation',
-        description: 'A faithful translation of one chat message.',
-        schema: TranslationOutputSchema,
-      }),
       prompt: buildTranslationPrompt(input),
       abortSignal: input.signal,
     });
-    return result.output;
+    return { translation: result.text.trim() };
   }
 
   async generateDailyLearningSummary(
@@ -230,6 +224,7 @@ export class AISDKProductAIService extends ProductAIService {
         description: 'A concise daily English-learning report grounded in supplied metrics.',
         schema: DailyLearningSummarySchema,
       }),
+      reasoning: 'none',
       prompt: buildDailyLearningSummaryPrompt(input),
       abortSignal: input.signal,
     });
@@ -251,6 +246,7 @@ export class AISDKProductAIService extends ProductAIService {
       model: resolved.model,
       logger: this.aiLogger,
       label: 'extractMemories',
+      reasoning: 'none',
       output: Output.object({
         name: 'MemoryAdmission',
         description: 'Up to two conservative final memory decisions grounded in source messages.',
