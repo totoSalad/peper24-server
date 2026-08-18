@@ -71,7 +71,7 @@ export async function generateTextWithRetry<
 
 /**
  * Runs one generateText attempt with SDK-level retries disabled (the outer
- * retry policy owns transient errors). Some providers (e.g. DeepSeek) only
+ * retry policy owns transient errors). Some OpenAI-compatible providers only
  * support JSON Schema in a compatibility mode where the schema is injected
  * into the system prompt, so the model can emit JSON that fails to parse or
  * validate, surfacing as NoObjectGeneratedError. When that happens, retry ONCE

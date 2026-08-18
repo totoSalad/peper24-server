@@ -29,11 +29,12 @@ export function admitMemoryDecision(
   if ((decision.layer === 'short_term') !== (decision.type === 'short_term')) return null;
   if (decision.layer === 'short_term' && !decision.temporaryDays) return null;
 
-  const rawAdmissionScore = Object.values(decision.scores)
-    .reduce<number>((sum, value) => sum + value, 0) - decision.penalties.length * 2;
+  const { futureValue, personalImportance, explicitness } = decision.scores;
+  const rawAdmissionScore = futureValue + personalImportance + explicitness
+    - decision.penalties.length * 2;
   if (!decision.explicitRemember) {
-    if (decision.layer === 'long_term' && (rawAdmissionScore < 6
-      || decision.scores.stability < 1 || decision.scores.futureValue < 1)) return null;
+    if (decision.layer === 'long_term' && (rawAdmissionScore < 4
+      || decision.scores.futureValue < 1)) return null;
     if (decision.layer === 'short_term' && (rawAdmissionScore < 2
       || decision.scores.futureValue < 1)) return null;
   }

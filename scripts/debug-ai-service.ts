@@ -10,8 +10,9 @@
  *   # 只测某个方法
  *   npx tsx scripts/debug-ai-service.ts --method chat
  *
- *   # 真实 DeepSeek API
- *   DEEPSEEK_API_KEY=sk-xxx npx tsx scripts/debug-ai-service.ts --real
+ *   # 真实 API（由 AI_TEXT_PROVIDER 选择 deepseek 或 bailian）
+ *   AI_TEXT_PROVIDER=deepseek DEEPSEEK_API_KEY=sk-xxx npx tsx scripts/debug-ai-service.ts --real
+ *   AI_TEXT_PROVIDER=bailian DASHSCOPE_API_KEY=sk-xxx npx tsx scripts/debug-ai-service.ts --real
  *
  *   # Debug 模式（打印完整错误堆栈）
  *   DEBUG=1 npx tsx scripts/debug-ai-service.ts
@@ -20,11 +21,10 @@
 // 尝试加载 .env 文件（可选依赖）
 try { require('dotenv/config'); } catch { /* dotenv 未安装 */ }
 
-import { createDeepSeek } from '@ai-sdk/deepseek';
 import { Logger } from '@eggjs/tegg';
-import type { LanguageModel } from 'ai';
 
 import { AISDKProductAIService } from '../app/module/ai/provider/AISDKProductAIService';
+import { ConfiguredTextModelProvider } from '../app/module/ai/provider/ConfiguredTextModelProvider';
 import {
   ResolvedTextModel,
   TextModelProvider,
@@ -63,28 +63,15 @@ function createDevService() {
   return new AISDKProductAIService(new StaticTextModelProvider(null), debugLogger);
 }
 
-/** DeepSeek 真实 API */
-function createDeepSeekService(): AISDKProductAIService {
-  const apiKey = process.env.DEEPSEEK_API_KEY;
-  if (!apiKey) {
-    console.error('❌ 缺少 DEEPSEEK_API_KEY 环境变量');
-    console.error('   export DEEPSEEK_API_KEY=sk-xxx');
-    console.error('   或创建 .env 文件: DEEPSEEK_API_KEY=sk-xxx');
-    process.exit(1);
-  }
-  const modelId = process.env.DEEPSEEK_MODEL ?? 'deepseek-chat';
-  const deepseek = createDeepSeek({
-    apiKey,
-    ...(process.env.DEEPSEEK_BASE_URL ? { baseURL: process.env.DEEPSEEK_BASE_URL } : {}),
-  });
-  return new AISDKProductAIService(
-    new StaticTextModelProvider({
-      model: deepseek(modelId) as unknown as LanguageModel,
-      provider: 'deepseek',
-      modelId,
-    }),
-    debugLogger,
-  );
+/** 真实 API（由 AI_TEXT_PROVIDER 选择厂商） */
+function createConfiguredService() {
+  const provider = new ConfiguredTextModelProvider();
+  const resolved = provider.resolve();
+  if (!resolved) throw new Error('真实调试需要将 AI_TEXT_PROVIDER 设为 deepseek 或 bailian');
+  return {
+    service: new AISDKProductAIService(provider, debugLogger),
+    modeLabel: `${resolved.provider} API (model=${resolved.modelId})`,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -257,8 +244,7 @@ async function main() {
   let modeLabel: string;
 
   if (args.includes('--real')) {
-    service = createDeepSeekService();
-    modeLabel = `DeepSeek API (model=${process.env.DEEPSEEK_MODEL ?? 'deepseek-chat'})`;
+    ({ service, modeLabel } = createConfiguredService());
   } else {
     service = createDevService();
     modeLabel = 'Development fallback (resolve()=null → DevelopmentProductAIService)';

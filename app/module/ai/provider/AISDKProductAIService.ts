@@ -198,12 +198,13 @@ export class AISDKProductAIService extends ProductAIService {
   }
 
   async translate(input: TranslationInput): Promise<TranslationResult> {
-    const resolved = this.models.resolve();
+    const resolved = this.models.resolve('translation');
     if (!resolved) return this.development.translate(input);
     const result = await generateTextWithRetry({
       model: resolved.model,
       logger: this.aiLogger,
       label: 'translate',
+      reasoning: 'none',
       prompt: buildTranslationPrompt(input),
       abortSignal: input.signal,
     });

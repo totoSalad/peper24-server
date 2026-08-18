@@ -136,7 +136,6 @@ export type MemorySaveDecision = {
   normalizedKey: string;
   sourceMessageIds: string[];
   scores: {
-    stability: MemoryScore;
     futureValue: MemoryScore;
     personalImportance: MemoryScore;
     explicitness: MemoryScore;

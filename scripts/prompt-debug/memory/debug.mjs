@@ -1,7 +1,7 @@
 import 'dotenv/config';
 import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
-import { createDeepSeek } from '@ai-sdk/deepseek';
+import { createAlibaba } from '@ai-sdk/alibaba';
 import { generateText, Output } from 'ai';
 
 import { buildMemoryExtractionPrompt } from '../../../app/module/ai/prompt/MemoryExtractionPrompt.ts';
@@ -129,15 +129,16 @@ async function main() {
     throw new Error('真实 fixture 会发送完整消息给外部模型；确认授权后请显式添加 --allow-real-data');
   }
 
-  if (!process.env.DEEPSEEK_API_KEY) {
-    throw new Error('缺少 DEEPSEEK_API_KEY；可写入仓库根目录 .env，或使用 --dry-run');
+  if (!process.env.DASHSCOPE_API_KEY) {
+    throw new Error('缺少 DASHSCOPE_API_KEY；可写入仓库根目录 .env，或使用 --dry-run');
   }
-  const modelId = process.env.DEEPSEEK_MODEL ?? 'deepseek-chat';
-  const deepseek = createDeepSeek({
-    apiKey: process.env.DEEPSEEK_API_KEY,
-    ...(process.env.DEEPSEEK_BASE_URL ? { baseURL: process.env.DEEPSEEK_BASE_URL } : {}),
+  const modelId = process.env.BAILIAN_MODEL ?? 'qwen3.7-flash';
+  const bailian = createAlibaba({
+    apiKey: process.env.DASHSCOPE_API_KEY,
+    baseURL: process.env.BAILIAN_BASE_URL
+      ?? 'https://dashscope.aliyuncs.com/compatible-mode/v1',
   });
-  const model = deepseek(modelId);
+  const model = bailian(modelId);
   const report = [];
 
   for (const testCase of selected) {
