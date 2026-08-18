@@ -6,15 +6,19 @@ import { MockLanguageModelV3 } from 'ai/test';
 import { AISDKProductAIService } from '../../../app/module/ai/provider/AISDKProductAIService';
 import {
   ResolvedTextModel,
+  TextModelPurpose,
   TextModelProvider,
 } from '../../../app/module/ai/provider/TextModelProvider';
 
 class StaticTextModelProvider extends TextModelProvider {
+  readonly requestedPurposes: TextModelPurpose[] = [];
+
   constructor(private readonly resolved: ResolvedTextModel | null) {
     super();
   }
 
-  resolve(): ResolvedTextModel | null {
+  resolve(purpose: TextModelPurpose = 'default'): ResolvedTextModel | null {
+    this.requestedPurposes.push(purpose);
     return this.resolved;
   }
 }
@@ -254,13 +258,19 @@ describe('AISDKProductAIService', () => {
         warnings: [],
       },
     });
-    const service = new AISDKProductAIService(new StaticTextModelProvider({
+    const provider = new StaticTextModelProvider({
       model: model as LanguageModel, provider: 'mock-provider', modelId: 'mock-chat',
-    }), noopLogger);
+    });
+    const service = new AISDKProductAIService(provider, noopLogger);
     const result = await service.translate({
       content: 'I would like a coffee.', targetLanguage: 'Chinese',
     });
     assert.deepEqual(result, { translation: '我想要一杯咖啡。' });
+    assert.deepEqual(provider.requestedPurposes, [ 'translation' ]);
+    assert.equal(
+      (model.doGenerateCalls[0] as unknown as { reasoning?: string }).reasoning,
+      'none',
+    );
   });
 
   it('returns a schema-validated daily learning summary with usage', async () => {
@@ -316,14 +326,14 @@ describe('AISDKProductAIService', () => {
               shouldSave: true, layer: 'long_term', type: 'preference',
               summary: 'Enjoys weekend hiking', normalizedKey: 'weekend-hobby',
               sourceMessageIds: [ '01MESSAGE' ],
-              scores: { stability: 2, futureValue: 2, personalImportance: 1, explicitness: 2 },
+              scores: { futureValue: 2, personalImportance: 1, explicitness: 2 },
               penalties: [], explicitRemember: false, inferredOrHypothetical: false,
               containsSecret: false, reason: 'Stable hobby',
             }, {
               shouldSave: true, layer: 'long_term', type: 'profile',
               summary: 'Lives in Beijing', normalizedKey: 'home-city',
               sourceMessageIds: [ '01MESSAGE' ],
-              scores: { stability: 2, futureValue: 2, personalImportance: 1, explicitness: 2 },
+              scores: { futureValue: 2, personalImportance: 1, explicitness: 2 },
               penalties: [], explicitRemember: false, inferredOrHypothetical: false,
               containsSecret: false, reason: 'Stable profile',
             }],
@@ -361,7 +371,7 @@ describe('AISDKProductAIService', () => {
         if (attempts === 1) {
           throw new APICallError({
             message: 'rate limit exceeded',
-            url: 'https://api.deepseek.com/chat/completions',
+            url: 'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions',
             requestBodyValues: {},
             statusCode: 429,
           });
@@ -452,7 +462,7 @@ describe('AISDKProductAIService', () => {
         attempts++;
         throw new APICallError({
           message: 'rate limit exceeded',
-          url: 'https://api.deepseek.com/chat/completions',
+          url: 'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions',
           requestBodyValues: {},
           statusCode: 429,
           responseHeaders: { 'retry-after': '120' },
@@ -478,7 +488,7 @@ describe('AISDKProductAIService', () => {
         if (attempts === 1) {
           throw new APICallError({
             message: 'rate limit exceeded',
-            url: 'https://api.deepseek.com/chat/completions',
+            url: 'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions',
             requestBodyValues: {},
             statusCode: 429,
             responseHeaders: { 'retry-after': '1' },

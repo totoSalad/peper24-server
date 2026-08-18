@@ -17,7 +17,7 @@ describe('MemoryAdmissionPolicy', () => {
       summary: 'Treats cooking as a main hobby and cooks almost every day',
       normalizedKey: 'cooking-hobby',
       sourceMessageIds: [ 'u2', 'u1' ],
-      scores: { stability: 2, futureValue: 2, personalImportance: 1, explicitness: 2 },
+      scores: { futureValue: 2, personalImportance: 1, explicitness: 2 },
       penalties: [],
       explicitRemember: false,
       inferredOrHypothetical: false,
@@ -26,7 +26,34 @@ describe('MemoryAdmissionPolicy', () => {
     }, sources, new Set([ 'u1', 'u2' ]));
 
     assert.equal(candidate?.content, 'Cooking is my main hobby.');
-    assert.equal(candidate?.admissionScore, 7);
+    assert.equal(candidate?.admissionScore, 5);
+  });
+
+  it('uses four as the long-term admission threshold without a stability score', () => {
+    const base = {
+      shouldSave: true as const,
+      layer: 'long_term' as const,
+      type: 'preference' as const,
+      summary: 'Enjoys cooking',
+      normalizedKey: 'cooking-hobby',
+      sourceMessageIds: [ 'u1' ],
+      scores: { futureValue: 1 as const, personalImportance: 1 as const, explicitness: 2 as const },
+      penalties: [],
+      explicitRemember: false,
+      inferredOrHypothetical: false,
+      containsSecret: false,
+      reason: 'Useful personal preference',
+    };
+    assert.equal(admitMemoryDecision(base, sources, new Set([ 'u1' ]))?.admissionScore, 4);
+    const legacyDecision = {
+      ...base,
+      scores: { ...base.scores, stability: 2 },
+    };
+    assert.equal(admitMemoryDecision(legacyDecision, sources, new Set([ 'u1' ]))?.admissionScore, 4);
+    assert.equal(admitMemoryDecision({
+      ...base,
+      scores: { ...base.scores, personalImportance: 0 },
+    }, sources, new Set([ 'u1' ])), null);
   });
 
   it('rejects low-value, inferred, secret, and ungrounded decisions', () => {
@@ -37,7 +64,7 @@ describe('MemoryAdmissionPolicy', () => {
       summary: 'Likes fried eggs',
       normalizedKey: 'fried-eggs',
       sourceMessageIds: [ 'u1' ],
-      scores: { stability: 1 as const, futureValue: 0 as const, personalImportance: 0 as const, explicitness: 2 as const },
+      scores: { futureValue: 0 as const, personalImportance: 0 as const, explicitness: 2 as const },
       penalties: [ 'too_granular' as const ],
       explicitRemember: false,
       inferredOrHypothetical: false,
@@ -57,7 +84,7 @@ describe('MemoryAdmissionPolicy', () => {
       layer: 'long_term' as const,
       type: 'profile' as const,
       summary: 'API token', normalizedKey: 'api-token', sourceMessageIds: [ 'u1' ],
-      scores: { stability: 0 as const, futureValue: 0 as const, personalImportance: 0 as const, explicitness: 2 as const },
+      scores: { futureValue: 0 as const, personalImportance: 0 as const, explicitness: 2 as const },
       penalties: [], explicitRemember: true, inferredOrHypothetical: false,
       containsSecret: false, reason: 'Explicit request',
     };
@@ -76,7 +103,7 @@ describe('MemoryAdmissionPolicy', () => {
       summary: 'Has a peanut allergy',
       normalizedKey: 'peanut-allergy',
       sourceMessageIds: [ 'u1' ],
-      scores: { stability: 0, futureValue: 0, personalImportance: 0, explicitness: 2 },
+      scores: { futureValue: 0, personalImportance: 0, explicitness: 2 },
       penalties: [ 'one_off_event' ],
       explicitRemember: true,
       inferredOrHypothetical: false,

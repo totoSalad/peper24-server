@@ -10,7 +10,6 @@ describe('MemoryExtractionSchema', () => {
     normalizedKey: 'home-city',
     sourceMessageIds: [ 'u1' ],
     scores: {
-      stability: 2 as const,
       futureValue: 2 as const,
       personalImportance: 1 as const,
       explicitness: 2 as const,
@@ -41,6 +40,15 @@ describe('MemoryExtractionSchema', () => {
     }).success, false);
     assert.equal(MemoryExtractionSchema.safeParse({
       decisions: [ savedDecision, savedDecision, savedDecision ],
+    }).success, false);
+  });
+
+  it('rejects the removed stability score', () => {
+    assert.equal(MemoryExtractionSchema.safeParse({
+      decisions: [{
+        ...savedDecision,
+        scores: { ...savedDecision.scores, stability: 2 },
+      }],
     }).success, false);
   });
 });

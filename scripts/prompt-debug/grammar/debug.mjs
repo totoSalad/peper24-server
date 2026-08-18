@@ -2,11 +2,14 @@ import 'dotenv/config';
 import { createAlibaba } from '@ai-sdk/alibaba';
 import { createDeepSeek } from '@ai-sdk/deepseek';
 import { Output } from 'ai';
+import { mkdir, writeFile } from 'node:fs/promises';
+import { dirname } from 'node:path';
 
 import { generateTextWithRetry } from '../../../app/module/ai/provider/AISDKTextGenerator.ts';
-import { buildVocabularyEnrichmentPrompt } from '../../../app/module/ai/prompt/VocabularyEnrichmentPrompt.ts';
-import { VocabularyEnrichmentSchema } from '../../../app/module/ai/schema/VocabularyEnrichmentSchema.ts';
-import { vocabularyCases } from './cases.mjs';
+import { grammarCases } from './cases.mjs';
+import { grammarPromptVariants } from './prompts.mjs';
+import { buildReportData } from './report.mjs';
+import { GrammarAnalysisBenchmarkSchema } from './schema.mjs';
 
 globalThis.AI_SDK_LOG_WARNINGS = false;
 
@@ -34,10 +37,12 @@ function parseArgs(argv) {
   return {
     caseIds: valueAfter(argv, '--case')?.split(',').filter(Boolean),
     targetIds: valueAfter(argv, '--target')?.split(',').filter(Boolean),
+    promptIds: valueAfter(argv, '--prompt')?.split(',').filter(Boolean),
     runs: positiveInteger(valueAfter(argv, '--runs'), '--runs', 2),
     dryRun: argv.includes('--dry-run'),
     printPrompt: argv.includes('--print-prompt'),
     json: argv.includes('--json'),
+    outputPath: valueAfter(argv, '--output'),
   };
 }
 
@@ -52,26 +57,44 @@ function selectById(items, requested, getId, label) {
 }
 
 function normalize(value) {
-  return value.normalize('NFKC').trim().replace(/\s+/g, ' ').toLocaleLowerCase('en-US');
+  return value.normalize('NFKC')
+    .trim()
+    .replace(/\s+/g, ' ')
+    .toLocaleLowerCase('en-US');
 }
 
 function evaluate(testCase, output) {
   const errors = [];
   const expected = testCase.expectation;
-  const empty = Object.keys(output).length === 0;
-  if (expected.empty) {
-    if (!empty) errors.push('期望返回空对象（人名），实际返回了词汇详情');
-    return errors;
+  if (output.explicitGrammarQuestion !== expected.explicitGrammarQuestion) {
+    errors.push(`explicitGrammarQuestion 应为 ${expected.explicitGrammarQuestion}，实际为 ${output.explicitGrammarQuestion}`);
   }
-  if (empty) return [ '期望词汇详情，实际返回空对象' ];
-  if (expected.enMeaning && !expected.enMeaning.test(output.enMeaning)) {
-    errors.push(`enMeaning 不匹配 ${expected.enMeaning}: ${output.enMeaning}`);
+
+  const actualTypes = output.errors.map(item => item.errorType);
+  for (const required of expected.requiredTypes ?? []) {
+    if (!actualTypes.includes(required)) errors.push(`缺少错误类型 ${required}`);
   }
-  if (expected.cnMeaning && !expected.cnMeaning.test(output.cnMeaning)) {
-    errors.push(`cnMeaning 不匹配 ${expected.cnMeaning}: ${output.cnMeaning}`);
+  const allowed = new Set(expected.allowedTypes ?? expected.requiredTypes ?? []);
+  for (const actual of actualTypes) {
+    if (!allowed.has(actual)) errors.push(`出现非预期错误类型 ${actual}`);
   }
-  if (!normalize(output.example).includes(normalize(output.enMeaning))) {
-    errors.push(`例句没有包含 enMeaning: ${output.enMeaning}`);
+
+  const corrected = output.errors.map(item => item.corrected).join('\n');
+  for (const pattern of expected.correctedMustMatch ?? []) {
+    if (!pattern.test(corrected)) errors.push(`纠正结果未匹配 ${pattern}: ${corrected}`);
+  }
+
+  const input = normalize(testCase.input.content);
+  for (const item of output.errors) {
+    if (!input.includes(normalize(item.original))) {
+      errors.push(`original 不是输入中的原文片段: ${item.original}`);
+    }
+    if (normalize(item.original) === normalize(item.corrected)) {
+      errors.push(`corrected 未改变原文: ${item.original}`);
+    }
+    if (!/[\u3400-\u9fff]/u.test(item.note)) {
+      errors.push(`note 应为中文: ${item.note}`);
+    }
   }
   return errors;
 }
@@ -82,15 +105,15 @@ function percentile(values, ratio) {
   return sorted[Math.ceil(sorted.length * ratio) - 1];
 }
 
-function summarize(results, targets) {
-  return targets.map(target => {
-    const rows = results.filter(item => item.variant === target.id);
+function summarize(results, variants) {
+  return variants.map(variant => {
+    const rows = results.filter(item => item.variant === variant.id);
     const successful = rows.filter(item => item.callSucceeded);
     const durations = successful.map(item => item.durationMs);
     const passed = rows.filter(item => item.passed).length;
     const sum = values => values.reduce((total, value) => total + value, 0);
     return {
-      ...target,
+      ...variant,
       reasoning: REASONING,
       passed,
       total: rows.length,
@@ -112,52 +135,77 @@ function summarize(results, targets) {
   });
 }
 
-async function runOne(model, target, testCase, run) {
+async function runOne(model, variant, testCase, run) {
   const startedAt = performance.now();
+  let structuredRepairRetries = 0;
+  const logger = {
+    info() {},
+    warn() { structuredRepairRetries += 1; },
+  };
   try {
     const result = await generateTextWithRetry({
       model,
-      label: `vocabulary-benchmark:${target.id}:${REASONING}:${testCase.id}:${run}`,
+      logger,
+      label: `grammar-benchmark:${variant.id}:${REASONING}:${testCase.id}:${run}`,
       reasoning: REASONING,
       output: Output.object({
-        name: 'VocabularyEnrichment',
-        description: 'Canonical learning information for one English word or short phrase.',
-        schema: VocabularyEnrichmentSchema,
+        name: 'GrammarAnalysis',
+        description: 'Fixed-taxonomy English grammar analysis for one learner message.',
+        schema: GrammarAnalysisBenchmarkSchema,
       }),
-      prompt: buildVocabularyEnrichmentPrompt(testCase.input),
+      prompt: variant.buildPrompt(testCase.input),
     });
     const output = result.output;
     const errors = evaluate(testCase, output);
-    // 完整耗时包含模型生成、JSON 解析、对象组装及质量检查。
     const durationMs = Math.round(performance.now() - startedAt);
     return {
-      variant: target.id,
-      provider: target.provider,
-      modelId: target.modelId,
+      variant: variant.id,
+      targetId: variant.targetId,
+      promptId: variant.promptId,
+      provider: variant.provider,
+      modelId: variant.modelId,
       reasoning: REASONING,
       caseId: testCase.id,
+      caseDescription: testCase.description,
+      inputContent: testCase.input.content,
+      expectation: {
+        explicitGrammarQuestion: testCase.expectation.explicitGrammarQuestion,
+        requiredTypes: testCase.expectation.requiredTypes ?? [],
+        allowedTypes: testCase.expectation.allowedTypes ?? testCase.expectation.requiredTypes ?? [],
+      },
       run,
       callSucceeded: true,
       passed: errors.length === 0,
       durationMs,
       inputTokens: result.usage.inputTokens,
       outputTokens: result.usage.outputTokens,
+      structuredRepairRetries,
       output,
       errors,
     };
   } catch (error) {
     return {
-      variant: target.id,
-      provider: target.provider,
-      modelId: target.modelId,
+      variant: variant.id,
+      targetId: variant.targetId,
+      promptId: variant.promptId,
+      provider: variant.provider,
+      modelId: variant.modelId,
       reasoning: REASONING,
       caseId: testCase.id,
+      caseDescription: testCase.description,
+      inputContent: testCase.input.content,
+      expectation: {
+        explicitGrammarQuestion: testCase.expectation.explicitGrammarQuestion,
+        requiredTypes: testCase.expectation.requiredTypes ?? [],
+        allowedTypes: testCase.expectation.allowedTypes ?? testCase.expectation.requiredTypes ?? [],
+      },
       run,
       callSucceeded: false,
       passed: false,
       durationMs: Math.round(performance.now() - startedAt),
       inputTokens: 0,
       outputTokens: 0,
+      structuredRepairRetries,
       errors: [ error instanceof Error ? error.message : String(error) ],
     };
   }
@@ -187,49 +235,64 @@ function createTargetModel(target) {
 
 async function main() {
   const options = parseArgs(process.argv.slice(2));
-  const cases = selectById(vocabularyCases, options.caseIds, item => item.id, '场景');
+  const cases = selectById(grammarCases, options.caseIds, item => item.id, '场景');
   const targets = selectById(comparisonTargets, options.targetIds, item => item.id, '模型目标');
+  const prompts = selectById(grammarPromptVariants, options.promptIds, item => item.id, 'Prompt');
+  const variants = targets.flatMap(target => prompts.map(prompt => ({
+    id: `${target.id}:${prompt.id}`,
+    targetId: target.id,
+    promptId: prompt.id,
+    provider: target.provider,
+    modelId: target.modelId,
+    buildPrompt: prompt.build,
+  })));
 
   if (options.printPrompt) {
-    for (const testCase of cases) {
-      console.log(`\n===== ${testCase.id} =====\n`);
-      console.log(buildVocabularyEnrichmentPrompt(testCase.input));
+    for (const prompt of prompts) {
+      for (const testCase of cases) {
+        console.log(`\n===== ${prompt.id} / ${testCase.id} =====\n`);
+        console.log(prompt.build(testCase.input));
+      }
     }
   }
   if (options.dryRun) {
-    const totalCalls = targets.length * cases.length * options.runs;
-    console.log(`\n已检查 ${targets.length} 个模型目标 × ${cases.length} 个场景 × ${options.runs} 轮 = ${totalCalls} 次调用；reasoning=${REASONING}；dry-run 未调用模型。`);
+    const totalCalls = targets.length * prompts.length * cases.length * options.runs;
+    console.log(`\n已检查 ${targets.length} 个模型目标 × ${prompts.length} 个 Prompt × ${cases.length} 个场景 × ${options.runs} 轮 = ${totalCalls} 次调用；reasoning=${REASONING}；dry-run 未调用模型。`);
     return;
   }
 
   const models = new Map(targets.map(target => [ target.id, createTargetModel(target) ]));
   const results = [];
-
-  // 每一轮交错运行各 Prompt/推理组合，降低服务端负载变化对单一组合的偏置。
   for (let run = 1; run <= options.runs; run++) {
     for (const testCase of cases) {
-      const offset = (run - 1) % targets.length;
-      const order = [ ...targets.slice(offset), ...targets.slice(0, offset) ];
-      for (const target of order) {
-        const row = await runOne(
-          models.get(target.id), target, testCase, run,
-        );
+      const offset = (run - 1) % variants.length;
+      const order = [ ...variants.slice(offset), ...variants.slice(0, offset) ];
+      for (const variant of order) {
+        const row = await runOne(models.get(variant.targetId), variant, testCase, run);
         results.push(row);
         if (!options.json) {
-          console.log(`${row.passed ? 'PASS' : 'FAIL'} ${row.variant.padEnd(18)} ${row.provider.padEnd(10)} ${row.reasoning.padEnd(6)} ${testCase.id.padEnd(24)} #${run} ${row.durationMs}ms`);
+          console.log(`${row.passed ? 'PASS' : 'FAIL'} ${row.variant.padEnd(34)} ${row.provider.padEnd(10)} ${row.reasoning.padEnd(6)} ${testCase.id.padEnd(28)} #${run} ${row.durationMs}ms`);
           for (const error of row.errors) console.log(`  ! ${error}`);
         }
       }
     }
   }
 
-  const summary = summarize(results, targets);
-  if (options.json) {
-    console.log(JSON.stringify({ targets, reasoning: REASONING, runs: options.runs, summary, results }, null, 2));
+  const summary = summarize(results, variants);
+  const promptDefinitions = prompts.map(({ id, description }) => ({ id, description }));
+  const payload = { targets, prompts: promptDefinitions, reasoning: REASONING, runs: options.runs, summary, results };
+  payload.report = buildReportData(payload);
+  if (options.outputPath) {
+    await mkdir(dirname(options.outputPath), { recursive: true });
+    await writeFile(options.outputPath, `${JSON.stringify(payload, null, 2)}\n`, 'utf8');
+    console.log(`\n逐次结果已写入 ${options.outputPath}`);
+  } else if (options.json) {
+    console.log(JSON.stringify(payload, null, 2));
   } else {
-    console.log('\n词汇模型对比 · Structured Output');
+    console.log('\n语法分析模型对比 · Structured Output');
     console.table(summary.map(item => ({
       target: item.id,
+      prompt: item.promptId,
       provider: item.provider,
       model: item.modelId,
       reasoning: item.reasoning,

@@ -44,7 +44,7 @@
 
 1. **Ports & Adapters**: 每个模块通过抽象类 (`*Ports.ts`) 定义数据存取接口，具体实现（MySQL）放在 `infrastructure` 层，测试用内存实现
 2. **依赖注入**: 全部通过 `@eggjs/tegg` 的 `@Inject()` 进行 DI
-3. **AI 集中抽象**: `ProductAIService` 定义全部 AI 能力接口，各模块只依赖抽象，不感知具体模型（DeepSeek/开发 Mock）
+3. **AI 集中抽象**: `ProductAIService` 定义全部 AI 能力接口，各模块只依赖抽象，不感知具体模型（DeepSeek/百炼/开发 Mock）
 4. **幂等性**: 通过 `clientRequestId` 去重，防止网络重试导致重复操作
 
 ## 详细文档

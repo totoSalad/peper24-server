@@ -83,7 +83,7 @@ Service 不得直接创建 Redis、邮件或 AI 客户端。外部能力使用�
 - Service：`<Capability>Service`，复杂单一用例使用 `<UseCase>ApplicationService`
 - Zod Schema：`<Action>Schema`
 - HTTP 输入输出：`<Action>Request`、`<Action>Response`
-- 基础设施实现按技术命名，例如 `RedisSessionStore`、`DeepSeekTextProvider`
+- 基础设施实现按技术命名，例如 `RedisSessionStore`、`ConfiguredTextModelProvider`
 - 测试文件：`*.test.ts`
 
 ## 完成标准

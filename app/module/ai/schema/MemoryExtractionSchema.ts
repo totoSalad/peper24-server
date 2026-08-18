@@ -19,7 +19,6 @@ const saveDecision = z.object({
   sourceMessageIds: z.array(z.string().trim().min(1)
     .max(64)).min(1).max(20),
   scores: z.object({
-    stability: score,
     futureValue: score,
     personalImportance: score,
     explicitness: score,

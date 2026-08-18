@@ -14,7 +14,9 @@ describe('MemoryExtractionPrompt', () => {
     assert.match(prompt, /one-off meal/i);
     assert.match(prompt, /one or two.*decisions/i);
     assert.match(prompt, /prefer one strong decision.*weak second/i);
-    assert.match(prompt, /like, prefer, or favorite.*never sufficient/i);
+    assert.match(prompt, /like, prefer, or favorite.*personal importance or future value/i);
+    assert.match(prompt, /score sum minus 2 per penalty >= 4/i);
+    assert.doesNotMatch(prompt, /\bstabl(?:e|ity)\b/i);
   });
 
   it('asks the model to keep each saved decision cohesive and distinct', () => {

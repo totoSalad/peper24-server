@@ -4,16 +4,16 @@ import { createDeepSeek } from '@ai-sdk/deepseek';
 import { Output } from 'ai';
 
 import { generateTextWithRetry } from '../../../app/module/ai/provider/AISDKTextGenerator.ts';
-import { buildVocabularyEnrichmentPrompt } from '../../../app/module/ai/prompt/VocabularyEnrichmentPrompt.ts';
-import { VocabularyEnrichmentSchema } from '../../../app/module/ai/schema/VocabularyEnrichmentSchema.ts';
-import { vocabularyCases } from './cases.mjs';
+import { buildTranslationPrompt } from '../../../app/module/ai/prompt/TranslationPrompt.ts';
+import { TranslationOutputSchema } from '../../../app/module/ai/schema/TranslationSchema.ts';
+import { translationCases } from './cases.mjs';
 
 globalThis.AI_SDK_LOG_WARNINGS = false;
 
 const REASONING = 'none';
 const comparisonTargets = [
   { id: 'deepseek-flash', provider: 'deepseek', modelId: 'deepseek-v4-flash' },
-  { id: 'qwen-flash', provider: 'bailian', modelId: 'qwen-flash' },
+  { id: 'qwen3.7-flash', provider: 'bailian', modelId: 'qwen3.7-flash' },
 ];
 
 function valueAfter(argv, flag) {
@@ -51,27 +51,17 @@ function selectById(items, requested, getId, label) {
   return selected;
 }
 
-function normalize(value) {
-  return value.normalize('NFKC').trim().replace(/\s+/g, ' ').toLocaleLowerCase('en-US');
-}
-
-function evaluate(testCase, output) {
+function evaluate(testCase, translation) {
   const errors = [];
-  const expected = testCase.expectation;
-  const empty = Object.keys(output).length === 0;
-  if (expected.empty) {
-    if (!empty) errors.push('期望返回空对象（人名），实际返回了词汇详情');
-    return errors;
+  for (const pattern of testCase.expectation.mustMatch ?? []) {
+    if (!pattern.test(translation)) errors.push(`译文未匹配 ${pattern}: ${translation}`);
   }
-  if (empty) return [ '期望词汇详情，实际返回空对象' ];
-  if (expected.enMeaning && !expected.enMeaning.test(output.enMeaning)) {
-    errors.push(`enMeaning 不匹配 ${expected.enMeaning}: ${output.enMeaning}`);
+  for (const pattern of testCase.expectation.mustNotMatch ?? []) {
+    if (pattern.test(translation)) errors.push(`译文包含禁止内容 ${pattern}: ${translation}`);
   }
-  if (expected.cnMeaning && !expected.cnMeaning.test(output.cnMeaning)) {
-    errors.push(`cnMeaning 不匹配 ${expected.cnMeaning}: ${output.cnMeaning}`);
-  }
-  if (!normalize(output.example).includes(normalize(output.enMeaning))) {
-    errors.push(`例句没有包含 enMeaning: ${output.enMeaning}`);
+  const lineCount = translation.split(/\r?\n/).length;
+  if (testCase.expectation.minimumLineCount && lineCount < testCase.expectation.minimumLineCount) {
+    errors.push(`译文应至少保留 ${testCase.expectation.minimumLineCount} 行，实际 ${lineCount} 行`);
   }
   return errors;
 }
@@ -117,18 +107,16 @@ async function runOne(model, target, testCase, run) {
   try {
     const result = await generateTextWithRetry({
       model,
-      label: `vocabulary-benchmark:${target.id}:${REASONING}:${testCase.id}:${run}`,
+      label: `translation-benchmark:${target.id}:${REASONING}:${testCase.id}:${run}`,
       reasoning: REASONING,
       output: Output.object({
-        name: 'VocabularyEnrichment',
-        description: 'Canonical learning information for one English word or short phrase.',
-        schema: VocabularyEnrichmentSchema,
+        name: 'MessageTranslation',
+        description: 'A faithful translation of one chat message.',
+        schema: TranslationOutputSchema,
       }),
-      prompt: buildVocabularyEnrichmentPrompt(testCase.input),
+      prompt: buildTranslationPrompt(testCase.input),
     });
-    const output = result.output;
-    const errors = evaluate(testCase, output);
-    // 完整耗时包含模型生成、JSON 解析、对象组装及质量检查。
+    const errors = evaluate(testCase, result.output.translation);
     const durationMs = Math.round(performance.now() - startedAt);
     return {
       variant: target.id,
@@ -142,7 +130,7 @@ async function runOne(model, target, testCase, run) {
       durationMs,
       inputTokens: result.usage.inputTokens,
       outputTokens: result.usage.outputTokens,
-      output,
+      output: result.output,
       errors,
     };
   } catch (error) {
@@ -166,7 +154,7 @@ async function runOne(model, target, testCase, run) {
 function createTargetModel(target) {
   if (target.provider === 'deepseek') {
     if (!process.env.DEEPSEEK_API_KEY) {
-      throw new Error('缺少 DEEPSEEK_API_KEY；可写入仓库根目录 .env，或用 --target qwen-flash');
+      throw new Error('缺少 DEEPSEEK_API_KEY；可写入仓库根目录 .env，或用 --target qwen3.7-flash');
     }
     const deepseek = createDeepSeek({
       apiKey: process.env.DEEPSEEK_API_KEY,
@@ -187,13 +175,13 @@ function createTargetModel(target) {
 
 async function main() {
   const options = parseArgs(process.argv.slice(2));
-  const cases = selectById(vocabularyCases, options.caseIds, item => item.id, '场景');
+  const cases = selectById(translationCases, options.caseIds, item => item.id, '场景');
   const targets = selectById(comparisonTargets, options.targetIds, item => item.id, '模型目标');
 
   if (options.printPrompt) {
     for (const testCase of cases) {
       console.log(`\n===== ${testCase.id} =====\n`);
-      console.log(buildVocabularyEnrichmentPrompt(testCase.input));
+      console.log(buildTranslationPrompt(testCase.input));
     }
   }
   if (options.dryRun) {
@@ -204,16 +192,12 @@ async function main() {
 
   const models = new Map(targets.map(target => [ target.id, createTargetModel(target) ]));
   const results = [];
-
-  // 每一轮交错运行各 Prompt/推理组合，降低服务端负载变化对单一组合的偏置。
   for (let run = 1; run <= options.runs; run++) {
     for (const testCase of cases) {
       const offset = (run - 1) % targets.length;
       const order = [ ...targets.slice(offset), ...targets.slice(0, offset) ];
       for (const target of order) {
-        const row = await runOne(
-          models.get(target.id), target, testCase, run,
-        );
+        const row = await runOne(models.get(target.id), target, testCase, run);
         results.push(row);
         if (!options.json) {
           console.log(`${row.passed ? 'PASS' : 'FAIL'} ${row.variant.padEnd(18)} ${row.provider.padEnd(10)} ${row.reasoning.padEnd(6)} ${testCase.id.padEnd(24)} #${run} ${row.durationMs}ms`);
@@ -227,7 +211,7 @@ async function main() {
   if (options.json) {
     console.log(JSON.stringify({ targets, reasoning: REASONING, runs: options.runs, summary, results }, null, 2));
   } else {
-    console.log('\n词汇模型对比 · Structured Output');
+    console.log('\n翻译模型对比 · Structured Output');
     console.table(summary.map(item => ({
       target: item.id,
       provider: item.provider,
