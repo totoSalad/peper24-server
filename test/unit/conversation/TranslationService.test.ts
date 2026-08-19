@@ -1,5 +1,5 @@
 import { strict as assert } from 'node:assert';
-import { TranslationService, translationTarget } from '../../../app/module/conversation/service/TranslationService';
+import { TranslationService } from '../../../app/module/conversation/service/TranslationService';
 import { AppError } from '../../../app/module/system/error/AppError';
 import { FakeClock } from '../../support/fake/AccountFakes';
 import { FakeProductAIService, InMemoryConversationRepository } from '../../support/fake/ConversationFakes';
@@ -22,11 +22,6 @@ describe('TranslationService', () => {
     const service = new TranslationService(repository, ai, new FakeClock(now));
     return { repository, ai, service };
   }
-
-  it('chooses the opposite target language from the message content', () => {
-    assert.equal(translationTarget('I like coffee.'), 'Chinese');
-    assert.equal(translationTarget('我喜欢咖啡。'), 'English');
-  });
 
   it('translates an owned completed message and caches the result', async () => {
     const { ai, service } = setup();

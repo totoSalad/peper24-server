@@ -26,7 +26,7 @@ import type {
   WelcomeInput,
 } from '../../../app/module/ai/service/ProductAIService';
 import type { GrammarOccurrenceGroup } from '../../../app/module/grammar/service/GrammarPorts';
-import { DevelopmentProductAIService } from '../../../app/module/ai/provider/DevelopmentProductAIService';
+import { DevelopmentProductAIService } from './DevelopmentProductAIService';
 
 export class InMemoryConversationRepository implements ConversationRepository {
   readonly conversations: ConversationRecord[] = [];

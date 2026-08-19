@@ -6,7 +6,7 @@ AI 模块是整个系统的**核心抽象层**。它不自己实现任何 AI 能
 
 1. 定义所有 AI 能力的**类型接口**（`ProductAIService` 抽象类）
 2. 定义各类 AI 操作的**输入输出结构**和 **Prompt 模板**
-3. 提供两个具体实现（provider）供 DI 容器选择
+3. 提供基于 AI SDK 的生产 Adapter；测试 Adapter 位于 `test/`，不进入应用模块图
 
 ## 目录结构
 
@@ -22,9 +22,8 @@ ai/
 │   └── VocabularyEnrichmentPrompt.ts # 词汇增强提示词
 ├── provider/                         # 具体实现
 │   ├── TextModelProvider.ts          # 文本模型抽象
-│   ├── ConfiguredTextModelProvider.ts # DeepSeek / 百炼运行时选择 (生产)
-│   ├── AISDKProductAIService.ts      # 基于 AI SDK 的 ProductAIService 实现 (生产)
-│   └── DevelopmentProductAIService.ts # 开发环境 Mock 实现
+│   ├── ConfiguredTextModelProvider.ts # DeepSeek / 百炼运行时选择
+│   └── AISDKProductAIService.ts      # 基于 AI SDK 的 ProductAIService 生产 Adapter
 ├── schema/                           # AI 输出的 Zod 校验
 │   ├── GrammarAnalysisSchema.ts      # 语法分析结果 Schema
 │   ├── MemoryExtractionSchema.ts     # 记忆提取结果 Schema
@@ -89,22 +88,25 @@ ConversationService  VocabularyService  MemoryExtractionService
 TranslationService  (enrichExpression)
 (translate)
 
-                        │ 运行时实现
-           ┌────────────┴────────────┐
-           ▼                         ▼
-AISDKProductAIService      DevelopmentProductAIService
-(DeepSeek/百炼, 生产环境)   (Mock, 开发环境)
+                        │ 生产运行时实现
+                        ▼
+              AISDKProductAIService
+                 (DeepSeek/百炼)
+
+测试通过同一个 ProductAIService interface 注入
+`test/support/fake` 中的确定性 Adapter，不进入生产运行时模块图。
 ```
 
-## 两种 Provider 实现
+## Provider 实现
 
 | 实现 | 环境 | 行为 |
 |---|---|---|
-| `AISDKProductAIService` | 生产 | 调用 DeepSeek 或阿里云百炼 API，真实的流式对话 |
-| `DevelopmentProductAIService` | 开发 | 返回固定假数据，不消耗 API 额度 |
+| `AISDKProductAIService` | 运行时 | 调用 DeepSeek 或阿里云百炼 API，真实的流式对话 |
+| `DevelopmentProductAIService` / `FakeProductAIService` | 仅测试 | 位于 `test/support/fake`，返回可控的确定性结果 |
 
-生产 Provider 支持按用途选模型：聊天、语法、词汇和记忆遵循 `AI_TEXT_PROVIDER`；翻译固定
+运行时 Provider 支持按用途选模型：聊天、语法、词汇和记忆遵循 `AI_TEXT_PROVIDER`；翻译固定
 通过百炼使用 `BAILIAN_TRANSLATION_MODEL`（默认 `qwen3.7-flash`），并关闭 reasoning。
+缺少运行时模型配置时会明确失败，不会回退到测试 Adapter。
 
 ## 数据流：一次对话中 AI 模块的角色
 

@@ -96,6 +96,9 @@ importers:
       eslint-config-egg:
         specifier: '14'
         version: 14.1.0(eslint@8.57.1(supports-color@8.1.1))(supports-color@8.1.1)(typescript@5.9.3)
+      mochawesome-with-mocha:
+        specifier: ^8.0.0
+        version: 8.0.0
       typescript:
         specifier: '5'
         version: 5.9.3

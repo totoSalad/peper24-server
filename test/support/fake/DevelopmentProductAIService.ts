@@ -13,22 +13,9 @@ import {
   VocabularyEnrichment,
   VocabularyEnrichmentInput,
   WelcomeInput,
-} from '../service/ProductAIService';
-import { AppError } from '../../system/error/AppError';
-
-function assertDevelopment(_target: unknown, _key: string, descriptor: PropertyDescriptor): PropertyDescriptor {
-  const original = descriptor.value;
-  descriptor.value = function(this: unknown, ...args: unknown[]) {
-    if (process.env.NODE_ENV === 'production') {
-      throw new AppError('AI_PROVIDER_UNAVAILABLE', 'AI 服务尚未配置', 503);
-    }
-    return original.apply(this, args);
-  };
-  return descriptor;
-}
+} from '../../../app/module/ai/service/ProductAIService';
 
 export class DevelopmentProductAIService extends ProductAIService {
-  @assertDevelopment
   async createWelcome(input: WelcomeInput): Promise<string> {
     if (input.scene === '餐厅点餐') {
       return 'Hi! Welcome to the restaurant. What would you like to order today?';
@@ -36,7 +23,6 @@ export class DevelopmentProductAIService extends ProductAIService {
     return `Let’s talk about ${input.topic}. What comes to your mind first?`;
   }
 
-  @assertDevelopment
   async* chat(input: ChatInput): AsyncIterable<ChatEvent> {
     yield { type: 'message.start', messageId: input.messageId };
     const response = `Thanks for sharing. ${input.content} What happened next?`;
@@ -56,7 +42,6 @@ export class DevelopmentProductAIService extends ProductAIService {
     };
   }
 
-  @assertDevelopment
   async analyzeGrammar(input: GrammarAnalysisInput): Promise<GrammarAnalysis> {
     if (/\b(should i say|is .+ correct|grammar)\b|语法|怎么用|对不对/i.test(input.content)) {
       return { explicitGrammarQuestion: true, errors: [] };
@@ -103,7 +88,6 @@ export class DevelopmentProductAIService extends ProductAIService {
     return { explicitGrammarQuestion: false, errors: errors.slice(0, 8) };
   }
 
-  @assertDevelopment
   async enrichVocabulary(input: VocabularyEnrichmentInput): Promise<VocabularyEnrichment | null> {
     const text = input.text.trim();
     const normalized = text.normalize('NFKC').toLocaleLowerCase('en-US');
@@ -126,7 +110,6 @@ export class DevelopmentProductAIService extends ProductAIService {
     };
   }
 
-  @assertDevelopment
   async translate(input: TranslationInput): Promise<TranslationResult> {
     return {
       translation: input.targetLanguage === 'Chinese'
@@ -135,7 +118,6 @@ export class DevelopmentProductAIService extends ProductAIService {
     };
   }
 
-  @assertDevelopment
   async generateDailyLearningSummary(
     input: DailyLearningSummaryInput,
   ): Promise<DailyLearningSummaryGeneration> {
@@ -165,7 +147,6 @@ export class DevelopmentProductAIService extends ProductAIService {
     };
   }
 
-  @assertDevelopment
   async extractMemories(input: MemoryExtractionInput): Promise<MemoryExtractionResult> {
     void input;
     return { decisions: [{

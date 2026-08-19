@@ -7,16 +7,14 @@ import { ResolvedTextModel, TextModelProvider, TextModelPurpose } from './TextMo
 const DEFAULT_BAILIAN_BASE_URL = 'https://dashscope.aliyuncs.com/compatible-mode/v1';
 const DEFAULT_BAILIAN_MODEL = 'qwen3.7-flash';
 const DEFAULT_DEEPSEEK_MODEL = 'deepseek-chat';
-const DEFAULT_PRODUCTION_PROVIDER = 'deepseek';
+const DEFAULT_PROVIDER = 'deepseek';
 
 @SingletonProto({ name: 'TextModelProvider', accessLevel: AccessLevel.PUBLIC })
 export class ConfiguredTextModelProvider extends TextModelProvider {
   private readonly resolved = new Map<TextModelPurpose, ResolvedTextModel>();
 
-  resolve(purpose: TextModelPurpose = 'default'): ResolvedTextModel | null {
-    const configuredProvider = process.env.AI_TEXT_PROVIDER
-      ?? (process.env.NODE_ENV === 'production' ? DEFAULT_PRODUCTION_PROVIDER : 'development');
-    if (configuredProvider === 'development') return null;
+  resolve(purpose: TextModelPurpose = 'default'): ResolvedTextModel {
+    const configuredProvider = process.env.AI_TEXT_PROVIDER ?? DEFAULT_PROVIDER;
     if (configuredProvider !== 'bailian' && configuredProvider !== 'deepseek') {
       throw new AppError('AI_PROVIDER_INVALID', `不支持的 AI Provider: ${configuredProvider}`, 503);
     }
