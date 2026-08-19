@@ -128,7 +128,8 @@ REDIS_PORT=6379
 REDIS_KEY_PREFIX=peper24:
 
 VERIFICATION_CODE_SECRET=replace-with-a-random-secret
-AI_TEXT_PROVIDER=development
+AI_TEXT_PROVIDER=deepseek
+DEEPSEEK_API_KEY=replace-with-your-api-key
 DAILY_CHAT_TOKEN_LIMIT=150000
 ```
 
@@ -138,11 +139,10 @@ DAILY_CHAT_TOKEN_LIMIT=150000
 
 | `AI_TEXT_PROVIDER` | 用途 | 必需配置 |
 | --- | --- | --- |
-| `development` | 本地开发和确定性测试 | 无 |
 | `deepseek` | DeepSeek 文本模型 | `DEEPSEEK_API_KEY`，可选 `DEEPSEEK_MODEL` |
 | `bailian` | 阿里云百炼文本模型 | `DASHSCOPE_API_KEY`，可选 `BAILIAN_MODEL` |
 
-未显式配置时，开发环境使用 `development`，生产环境使用 `deepseek`。翻译固定通过百炼，真实翻译请求还需要 `DASHSCOPE_API_KEY`；模型和 Base URL 的完整配置见应用配置与部署文档。
+未显式配置时，所有运行环境都使用 `deepseek`；缺少对应 API Key 时会明确返回 AI Provider 不可用错误，不会回退到测试实现。翻译固定通过百炼，真实翻译请求还需要 `DASHSCOPE_API_KEY`；模型和 Base URL 的完整配置见应用配置与部署文档。确定性的 AI Adapter 仅存在于 `test/support/fake`，由测试命令装配。
 
 ## 常用命令
 
@@ -152,11 +152,18 @@ pnpm migrate              # 执行数据库迁移
 pnpm lint                 # ESLint
 pnpm build                # TypeScript 类型检查，不生成 JS
 pnpm test:unit            # 单元测试
+pnpm test:report          # 单元测试，生成 HTML 测试报告并在浏览器中打开
 pnpm test:integration     # MySQL、Redis 与 HTTP 集成测试
 pnpm test                 # 单元测试 + 集成测试
+pnpm coverage             # 单元测试覆盖率，并生成 HTML 覆盖率报告
 ```
 
 `test:integration` 会准备并使用独立的 `peper24_test` 数据库，不读写开发库。
+
+报告生成后可直接在浏览器中打开：
+
+- 测试报告：`reports/tests/index.html`
+- 覆盖率报告：`test/coverage/index.html`
 
 ## 设计文档
 

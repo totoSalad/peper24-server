@@ -4,6 +4,8 @@ npm-debug.log
 node_modules/
 .pnpm-store/
 coverage/
+test/coverage/
+reports/
 .idea/
 run/
 logs/

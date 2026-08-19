@@ -25,9 +25,12 @@ describe('ConfiguredTextModelProvider', () => {
     }
   });
 
-  it('returns no external model when development mode is explicit', () => {
+  it('rejects the removed development runtime provider', () => {
     process.env.AI_TEXT_PROVIDER = 'development';
-    assert.equal(new ConfiguredTextModelProvider().resolve(), null);
+    assert.throws(
+      () => new ConfiguredTextModelProvider().resolve(),
+      (error: unknown) => error instanceof AppError && error.code === 'AI_PROVIDER_INVALID',
+    );
   });
 
   it('defaults production to DeepSeek while translation remains on Bailian', () => {

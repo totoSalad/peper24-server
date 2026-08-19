@@ -1,0 +1,9 @@
+{
+  "reporter-option": [
+    "reportDir=reports/tests",
+    "reportFilename=index",
+    "html=true",
+    "json=true",
+    "quiet=false"
+  ]
+}

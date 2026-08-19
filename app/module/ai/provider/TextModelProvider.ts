@@ -9,5 +9,5 @@ export interface ResolvedTextModel {
 export type TextModelPurpose = 'default' | 'translation';
 
 export abstract class TextModelProvider {
-  abstract resolve(purpose?: TextModelPurpose): ResolvedTextModel | null;
+  abstract resolve(purpose?: TextModelPurpose): ResolvedTextModel;
 }

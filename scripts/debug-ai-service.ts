@@ -4,15 +4,12 @@
  * 不依赖 Egg.js 容器，直接实例化和调试 AI 服务的每个方法。
  *
  * 用法:
- *   # 默认: Development fallback（不需要 API key）
- *   npx tsx scripts/debug-ai-service.ts
+ *   # 真实 API（由 AI_TEXT_PROVIDER 选择 deepseek 或 bailian）
+ *   AI_TEXT_PROVIDER=deepseek DEEPSEEK_API_KEY=sk-xxx npx tsx scripts/debug-ai-service.ts
+ *   AI_TEXT_PROVIDER=bailian DASHSCOPE_API_KEY=sk-xxx npx tsx scripts/debug-ai-service.ts
  *
  *   # 只测某个方法
  *   npx tsx scripts/debug-ai-service.ts --method chat
- *
- *   # 真实 API（由 AI_TEXT_PROVIDER 选择 deepseek 或 bailian）
- *   AI_TEXT_PROVIDER=deepseek DEEPSEEK_API_KEY=sk-xxx npx tsx scripts/debug-ai-service.ts --real
- *   AI_TEXT_PROVIDER=bailian DASHSCOPE_API_KEY=sk-xxx npx tsx scripts/debug-ai-service.ts --real
  *
  *   # Debug 模式（打印完整错误堆栈）
  *   DEBUG=1 npx tsx scripts/debug-ai-service.ts
@@ -25,24 +22,7 @@ import { Logger } from '@eggjs/tegg';
 
 import { AISDKProductAIService } from '../app/module/ai/provider/AISDKProductAIService';
 import { ConfiguredTextModelProvider } from '../app/module/ai/provider/ConfiguredTextModelProvider';
-import {
-  ResolvedTextModel,
-  TextModelProvider,
-} from '../app/module/ai/provider/TextModelProvider';
 import type { ChatEvent } from '../app/module/ai/service/ProductAIService';
-
-// ---------------------------------------------------------------------------
-// TextModelProvider 实现
-// ---------------------------------------------------------------------------
-
-class StaticTextModelProvider extends TextModelProvider {
-  constructor(private readonly resolved: ResolvedTextModel | null) {
-    super();
-  }
-  resolve(): ResolvedTextModel | null {
-    return this.resolved;
-  }
-}
 
 // ---------------------------------------------------------------------------
 // 工厂函数
@@ -58,16 +38,10 @@ const debugLogger: Logger = {
   error: (...args) => console.error(...args),
 };
 
-/** Development fallback — resolve() 返回 null，所有方法走 DevelopmentProductAIService */
-function createDevService() {
-  return new AISDKProductAIService(new StaticTextModelProvider(null), debugLogger);
-}
-
 /** 真实 API（由 AI_TEXT_PROVIDER 选择厂商） */
 function createConfiguredService() {
   const provider = new ConfiguredTextModelProvider();
   const resolved = provider.resolve();
-  if (!resolved) throw new Error('真实调试需要将 AI_TEXT_PROVIDER 设为 deepseek 或 bailian');
   return {
     service: new AISDKProductAIService(provider, debugLogger),
     modeLabel: `${resolved.provider} API (model=${resolved.modelId})`,
@@ -110,7 +84,7 @@ async function debugCreateWelcome(service: AISDKProductAIService) {
   banner('createWelcome');
   const inputs = [
     { topic: 'weekend activities', scene: 'coffee shop' },
-    { topic: 'travel', scene: '餐厅点餐' }, // 触发 dev 模式下的特殊分支
+    { topic: 'travel', scene: '餐厅点餐' },
   ];
   for (const input of inputs) {
     const welcome = await service.createWelcome({
@@ -239,16 +213,7 @@ async function main() {
     if (idx >= 0 && idx + 1 < args.length) methodFilter = args[idx + 1];
   }
 
-  // 确定模式和服务
-  let service: AISDKProductAIService;
-  let modeLabel: string;
-
-  if (args.includes('--real')) {
-    ({ service, modeLabel } = createConfiguredService());
-  } else {
-    service = createDevService();
-    modeLabel = 'Development fallback (resolve()=null → DevelopmentProductAIService)';
-  }
+  const { service, modeLabel } = createConfiguredService();
 
   console.log('\n🔧 AISDKProductAIService 独立调试');
   console.log(`   模式: ${modeLabel}`);

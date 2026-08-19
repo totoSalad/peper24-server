@@ -13,11 +13,11 @@ import {
 class StaticTextModelProvider extends TextModelProvider {
   readonly requestedPurposes: TextModelPurpose[] = [];
 
-  constructor(private readonly resolved: ResolvedTextModel | null) {
+  constructor(private readonly resolved: ResolvedTextModel) {
     super();
   }
 
-  resolve(purpose: TextModelPurpose = 'default'): ResolvedTextModel | null {
+  resolve(purpose: TextModelPurpose = 'default'): ResolvedTextModel {
     this.requestedPurposes.push(purpose);
     return this.resolved;
   }
@@ -96,24 +96,6 @@ describe('AISDKProductAIService', () => {
     });
   });
 
-  it('uses the deterministic provider when real AI is disabled locally', async () => {
-    const service = new AISDKProductAIService(new StaticTextModelProvider(null), noopLogger);
-
-    const events = await collect(service.chat({
-      messageId: '01MESSAGE',
-      userId: '01USER',
-      conversationId: '01CONVERSATION',
-      topic: 'Coffee',
-      history: [],
-      content: 'I like coffee.',
-    }));
-
-    assert.equal(events[0].type, 'message.start');
-    const done = events.at(-1);
-    assert.equal(done?.type, 'message.done');
-    assert.equal(done?.type === 'message.done' && done.usage.provider, 'development');
-  });
-
   it('parses schema-validated grammar analysis from structured model output', async () => {
     const model = new MockLanguageModelV3({
       provider: 'mock-provider',
@@ -159,19 +141,6 @@ describe('AISDKProductAIService', () => {
     assert.equal(result.errors[0].corrected, 'Yesterday I went home.');
   });
 
-  it('uses deterministic grammar detection when external AI is disabled', async () => {
-    const service = new AISDKProductAIService(new StaticTextModelProvider(null), noopLogger);
-
-    const analysis = await service.analyzeGrammar({ content: 'She like music.' });
-    const explicitQuestion = await service.analyzeGrammar({
-      content: 'Is “she like music” grammar correct?',
-    });
-
-    assert.equal(analysis.errors[0].errorType, 'subject_verb_agreement');
-    assert.equal(explicitQuestion.explicitGrammarQuestion, true);
-    assert.deepEqual(explicitQuestion.errors, []);
-  });
-
   it('parses schema-validated vocabulary enrichment', async () => {
     const model = new MockLanguageModelV3({
       provider: 'mock-provider',
@@ -206,16 +175,6 @@ describe('AISDKProductAIService', () => {
       (model.doGenerateCalls[0] as unknown as { reasoning?: string }).reasoning,
       'none',
     );
-  });
-
-  it('uses deterministic vocabulary enrichment when external AI is disabled', async () => {
-    const service = new AISDKProductAIService(new StaticTextModelProvider(null), noopLogger);
-    const result = await service.enrichVocabulary({
-      text: 'almost late', context: 'I was almost late today.',
-    });
-    assert.ok(result);
-    assert.equal(result.enMeaning, 'almost late');
-    assert.equal(result.cnMeaning, '差点迟到');
   });
 
   it('maps an empty vocabulary enrichment object for a person name to null', async () => {

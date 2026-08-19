@@ -27,7 +27,6 @@ import {
   WelcomeInput,
 } from '../service/ProductAIService';
 import { generateTextWithRetry } from './AISDKTextGenerator';
-import { DevelopmentProductAIService } from './DevelopmentProductAIService';
 import { PromptContextCompressor, PromptMessage } from './PromptContextCompressor';
 import { TextModelProvider } from './TextModelProvider';
 
@@ -49,8 +48,6 @@ function vocabularyReasoning(text: string): 'none' | 'provider-default' {
 
 @SingletonProto({ name: 'ProductAIService', accessLevel: AccessLevel.PUBLIC })
 export class AISDKProductAIService extends ProductAIService {
-  private readonly development = new DevelopmentProductAIService();
-
   constructor(
     @Inject('TextModelProvider') private readonly models: TextModelProvider,
     @Inject('aiLogger') private readonly aiLogger: Logger,
@@ -60,7 +57,6 @@ export class AISDKProductAIService extends ProductAIService {
 
   async createWelcome(input: WelcomeInput): Promise<string> {
     const resolved = this.models.resolve();
-    if (!resolved) return this.development.createWelcome(input);
 
     const result = await generateTextWithRetry({
       model: resolved.model,
@@ -80,10 +76,6 @@ export class AISDKProductAIService extends ProductAIService {
 
   async* chat(input: ChatInput): AsyncIterable<ChatEvent> {
     const resolved = this.models.resolve();
-    if (!resolved) {
-      yield* this.development.chat(input);
-      return;
-    }
 
     yield { type: 'message.start', messageId: input.messageId };
 
@@ -159,7 +151,6 @@ export class AISDKProductAIService extends ProductAIService {
 
   async analyzeGrammar(input: GrammarAnalysisInput): Promise<GrammarAnalysis> {
     const resolved = this.models.resolve();
-    if (!resolved) return this.development.analyzeGrammar(input);
 
     const result = await generateTextWithRetry({
       model: resolved.model,
@@ -178,7 +169,6 @@ export class AISDKProductAIService extends ProductAIService {
 
   async enrichVocabulary(input: VocabularyEnrichmentInput): Promise<VocabularyEnrichment | null> {
     const resolved = this.models.resolve();
-    if (!resolved) return this.development.enrichVocabulary(input);
     const result = await generateTextWithRetry({
       model: resolved.model,
       logger: this.aiLogger,
@@ -199,7 +189,6 @@ export class AISDKProductAIService extends ProductAIService {
 
   async translate(input: TranslationInput): Promise<TranslationResult> {
     const resolved = this.models.resolve('translation');
-    if (!resolved) return this.development.translate(input);
     const result = await generateTextWithRetry({
       model: resolved.model,
       logger: this.aiLogger,
@@ -215,7 +204,6 @@ export class AISDKProductAIService extends ProductAIService {
     input: DailyLearningSummaryInput,
   ): Promise<DailyLearningSummaryGeneration> {
     const resolved = this.models.resolve();
-    if (!resolved) return this.development.generateDailyLearningSummary(input);
     const result = await generateTextWithRetry({
       model: resolved.model,
       logger: this.aiLogger,
@@ -242,7 +230,6 @@ export class AISDKProductAIService extends ProductAIService {
 
   async extractMemories(input: MemoryExtractionInput): Promise<MemoryExtractionResult> {
     const resolved = this.models.resolve();
-    if (!resolved) return this.development.extractMemories(input);
     const result = await generateTextWithRetry({
       model: resolved.model,
       logger: this.aiLogger,
