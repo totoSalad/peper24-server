@@ -1,6 +1,5 @@
 import { AccessLevel, Inject, SingletonProto } from '@eggjs/tegg';
 import { ProductAIService } from '../../ai/service/ProductAIService';
-import { Clock } from '../../system/service/SystemPorts';
 import { admitMemoryDecision } from './MemoryAdmissionPolicy';
 import { MemoryRecord, MemoryRepository, PendingMemoryGroup } from './MemoryPorts';
 import { MemoryService } from './MemoryService';
@@ -15,7 +14,6 @@ export class MemoryExtractionService {
     @Inject('MemoryRepository') private readonly memories: MemoryRepository,
     @Inject() private readonly memoryService: MemoryService,
     @Inject('ProductAIService') private readonly ai: ProductAIService,
-    @Inject('Clock') private readonly clock: Clock,
   ) {}
 
   async processPendingForUser(userId: string, signal?: AbortSignal) {
@@ -46,7 +44,11 @@ export class MemoryExtractionService {
       .map(decision => admitMemoryDecision(decision, messages, targetIds))
       .filter(candidate => candidate !== null);
     const changed = await this.memoryService.applyCandidates(userId, candidates);
-    await this.memories.markMessagesScanned(userId, [ ...targetIds ], this.clock.now());
+    await this.memories.advanceMemoryScanCursor(
+      userId,
+      conversationId,
+      Math.max(...targetMessages.map(message => message.sequence)),
+    );
     return changed;
   }
 }

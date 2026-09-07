@@ -28,7 +28,7 @@ describe('VocabularyService', () => {
     const service = new VocabularyService(
       repository,
       ai,
-      new FixedIdGenerator([ '01VOCAB', '01CONTEXT', '02VOCAB', '02CONTEXT', '01LOG', '02LOG' ]),
+      new FixedIdGenerator([ '01VOCAB', '02VOCAB', '01LOG', '02LOG' ]),
       new FakeClock(now),
       logger,
     );
@@ -45,15 +45,13 @@ describe('VocabularyService', () => {
     assert.ok(item);
     assert.equal(item.normalizedExpression, 'whole wheat bread');
     assert.equal(repository.items[0].reviewState.nextReviewAt.toISOString(), now.toISOString());
-    assert.equal(repository.contexts.length, 1);
   });
 
-  it('deduplicates a canonical expression and does not duplicate the same message context', async () => {
+  it('deduplicates a canonical expression', async () => {
     const { repository, service } = setup();
     await service.addFromSelection('01USER', 'whole   wheat bread', '01MESSAGE');
     await service.addFromSelection('01USER', 'Whole Wheat Bread', '01MESSAGE');
     assert.equal(repository.items.length, 1);
-    assert.equal(repository.contexts.length, 1);
   });
 
   it('rejects a source message owned by someone else or text absent from the source', async () => {
@@ -171,8 +169,8 @@ describe('VocabularyService', () => {
     const { repository, service } = setup();
     for (let index = 0; index < 12; index += 1) {
       repository.items.push({
-        id: `v${index}`, userId: '01USER', originalExpression: `word${index}`,
-        expression: `word${index}`, normalizedExpression: `word${index}`,
+        id: `v${index}`, userId: '01USER', expression: `word${index}`,
+        normalizedExpression: `word${index}`,
         detail: { cnMeaning: '词', enMeaning: `word${index}`, example: 'Example.', phonetic: '/w/' },
         lastEncounteredAt: now, createdAt: now, updatedAt: now,
         reviewState: {

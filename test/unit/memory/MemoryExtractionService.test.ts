@@ -17,23 +17,23 @@ describe('MemoryExtractionService', () => {
     repository.extractionMessages = [ ...repository.unscannedMessages ];
     const ai = new FakeProductAIService();
     const memory = new MemoryService(repository, new FixedIdGenerator([ 'm1', 'm2' ]), new FakeClock(now));
-    return { repository, ai, extraction: new MemoryExtractionService(repository, memory, ai, new FakeClock(now)) };
+    return { repository, ai, extraction: new MemoryExtractionService(repository, memory, ai) };
   }
 
-  it('does not call AI or scan messages when a conversation has fewer than ten targets', async () => {
+  it('does not call AI or advance the cursor when a conversation has fewer than ten targets', async () => {
     const { repository, ai, extraction } = setup(9);
     assert.deepEqual(await extraction.processPendingForUser('user-1'), []);
     assert.equal(ai.memoryExtractionCalls, 0);
-    assert.equal(repository.scannedMessageIds.length, 0);
+    assert.equal(repository.memoryScanCursors.size, 0);
   });
 
-  it('calls AI once for ten to twenty targets and scans them when nothing should be saved', async () => {
+  it('calls AI once for ten to twenty targets and advances the cursor when nothing should be saved', async () => {
     const { repository, ai, extraction } = setup(20);
     ai.memoryExtraction = { decisions: [{ shouldSave: false, reason: 'Current conversation details only' }] };
     assert.deepEqual(await extraction.processPendingForUser('user-1'), []);
     assert.equal(ai.memoryExtractionCalls, 1);
     assert.equal(ai.memoryExtractionInputs[0].targetMessageIds.length, 20);
-    assert.equal(repository.scannedMessageIds.length, 20);
+    assert.equal(repository.memoryScanCursors.get('user-1\u0000c1'), 39);
   });
 
   it('processes only the earliest twenty targets and leaves overflow pending', async () => {
@@ -41,19 +41,19 @@ describe('MemoryExtractionService', () => {
     ai.memoryExtraction = { decisions: [{ shouldSave: false, reason: 'Nothing durable' }] };
     await extraction.processPendingForUser('user-1');
     assert.deepEqual(ai.memoryExtractionInputs[0].targetMessageIds, Array.from({ length: 20 }, (_, i) => `u${i + 1}`));
-    assert.deepEqual(repository.unscannedMessages.map(item => item.id), [ 'u21' ]);
+    assert.deepEqual(repository.pendingMessages('user-1', 'c1').map(item => item.id), [ 'u21' ]);
   });
 
   it('processes thirty-five targets as twenty followed by fifteen in separate runs', async () => {
     const { repository, ai, extraction } = setup(35);
     ai.memoryExtraction = { decisions: [{ shouldSave: false, reason: 'Nothing durable' }] };
     await extraction.processPendingForUser('user-1');
-    assert.equal(repository.unscannedMessages.length, 15);
+    assert.equal(repository.pendingMessages('user-1', 'c1').length, 15);
     await extraction.processPendingForUser('user-1');
     assert.equal(ai.memoryExtractionCalls, 2);
     assert.equal(ai.memoryExtractionInputs[0].targetMessageIds.length, 20);
     assert.equal(ai.memoryExtractionInputs[1].targetMessageIds.length, 15);
-    assert.equal(repository.unscannedMessages.length, 0);
+    assert.equal(repository.pendingMessages('user-1', 'c1').length, 0);
   });
 
   it('counts each user and conversation separately and skips ineligible groups', async () => {
@@ -75,7 +75,7 @@ describe('MemoryExtractionService', () => {
     assert.equal(ai.memoryExtractionCalls, 1);
     assert.equal(ai.memoryExtractionInputs[0].targetMessageIds.length, 10);
     assert.ok(ai.memoryExtractionInputs[0].targetMessageIds.every(id => id.startsWith('u2-')));
-    assert.equal(repository.unscannedMessages.length, 19);
+    assert.equal(repository.pendingMessages().length, 19);
   });
 
   it('persists up to two admitted decisions using each source message content', async () => {
@@ -133,18 +133,18 @@ describe('MemoryExtractionService', () => {
     const changed = await extraction.processPendingForUser('user-1');
     assert.equal(changed.length, 1);
     assert.equal(repository.items[0].normalizedKey, 'home city');
-    assert.equal(repository.scannedMessageIds.length, 10);
+    assert.equal(repository.memoryScanCursors.get('user-1\u0000c1'), 19);
   });
 
-  it('leaves targets unscanned when extraction fails so the next schedule can retry', async () => {
+  it('leaves the cursor unchanged when extraction fails so the next schedule can retry', async () => {
     const { repository, ai, extraction } = setup(10);
     ai.memoryExtractionFailure = new Error('provider unavailable');
     await assert.rejects(extraction.processPendingForUser('user-1'), /provider unavailable/);
-    assert.deepEqual(repository.scannedMessageIds, []);
-    assert.equal(repository.unscannedMessages.length, 10);
+    assert.equal(repository.memoryScanCursors.size, 0);
+    assert.equal(repository.pendingMessages('user-1', 'c1').length, 10);
   });
 
-  it('leaves targets unscanned when persistence fails', async () => {
+  it('leaves the cursor unchanged when persistence fails', async () => {
     const { repository, ai, extraction } = setup(10);
     ai.memoryExtraction = { decisions: [{
       shouldSave: true, layer: 'long_term', type: 'profile', summary: 'Lives in Shanghai',
@@ -157,7 +157,7 @@ describe('MemoryExtractionService', () => {
       throw new Error('database unavailable');
     };
     await assert.rejects(extraction.processPendingForUser('user-1'), /database unavailable/);
-    assert.deepEqual(repository.scannedMessageIds, []);
-    assert.equal(repository.unscannedMessages.length, 10);
+    assert.equal(repository.memoryScanCursors.size, 0);
+    assert.equal(repository.pendingMessages('user-1', 'c1').length, 10);
   });
 });

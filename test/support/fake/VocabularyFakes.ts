@@ -13,7 +13,6 @@ type ListedVocabulary = VocabularyRecord & { reviewState: ReviewStateRecord };
 export class InMemoryVocabularyRepository implements VocabularyRepository {
   readonly sources = new Map<string, { userId: string; message: SourceMessage }>();
   readonly items: ListedVocabulary[] = [];
-  readonly contexts: SaveVocabularyInput['context'][] = [];
   readonly reviews = new Map<string, ReviewOutcome>();
 
   async findSourceMessage(userId: string, messageId: string): Promise<SourceMessage | null> {
@@ -33,10 +32,6 @@ export class InMemoryVocabularyRepository implements VocabularyRepository {
     } else {
       existing.lastEncounteredAt = input.vocabulary.lastEncounteredAt;
       existing.updatedAt = input.vocabulary.updatedAt;
-    }
-    if (!this.contexts.some(context => context.vocabularyId === existing?.id
-      && context.messageId === input.context.messageId)) {
-      this.contexts.push({ ...input.context, vocabularyId: existing.id });
     }
     return existing;
   }

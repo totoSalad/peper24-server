@@ -90,7 +90,7 @@ flowchart TB
         M3["ai.extractMemories<br/>一次调用，最多 2 条决策"]
         M4["admitMemoryDecision 服务端复算<br/>来源校验 / 秘密拒绝 / 准入分门槛"]
         M5["applyCandidates<br/>normalizedKey 去重合并"]
-        M6["markMessagesScanned<br/>成功或 shouldSave=false 都推进"]
+        M6["advanceMemoryScanCursor<br/>成功或 shouldSave=false 都推进"]
         M1 --> M2 --> M3 --> M4 --> M5 --> M6
     end
 

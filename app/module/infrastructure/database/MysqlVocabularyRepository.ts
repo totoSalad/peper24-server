@@ -68,12 +68,11 @@ export class MysqlVocabularyRepository extends VocabularyRepository {
       if (!existing[0]) {
         await this.query(connection, `
           INSERT INTO vocabularies (
-            id, user_id, original_expression, expression, normalized_expression, detail,
+            id, user_id, expression, normalized_expression, detail,
             last_encountered_at, created_at, updated_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         `, [
-          vocabulary.id, vocabulary.userId, vocabulary.originalExpression,
-          vocabulary.expression, vocabulary.normalizedExpression,
+          vocabulary.id, vocabulary.userId, vocabulary.expression, vocabulary.normalizedExpression,
           JSON.stringify(vocabulary.detail),
           vocabulary.lastEncounteredAt, vocabulary.createdAt, vocabulary.updatedAt,
         ]);
@@ -92,12 +91,6 @@ export class MysqlVocabularyRepository extends VocabularyRepository {
           updatedAt: input.vocabulary.updatedAt,
         };
       }
-      await this.query(connection, `
-        INSERT IGNORE INTO vocabulary_contexts (
-          id, vocabulary_id, message_id, sentence, created_at
-        ) VALUES (?, ?, ?, ?, ?)
-      `, [ input.context.id, vocabulary.id, input.context.messageId,
-        input.context.sentence, input.context.createdAt ]);
       return vocabulary;
     });
   }
@@ -193,7 +186,7 @@ export class MysqlVocabularyRepository extends VocabularyRepository {
   private toVocabulary(row: Row): VocabularyRecord {
     return {
       id: String(row.id), userId: String(row.user_id),
-      originalExpression: String(row.original_expression), expression: String(row.expression),
+      expression: String(row.expression),
       normalizedExpression: String(row.normalized_expression),
       detail: this.toDetail(row.detail),
       lastEncounteredAt: toDate(row.last_encountered_at),

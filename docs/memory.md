@@ -61,7 +61,8 @@ MemoryExtractionService.processPendingForUser(userId)
 ├─ 1. 加载符合阈值的会话组
 │     loadPendingMemoryGroups(minimumMessages=10, maximumMessagesPerGroup=20)
 │     → 按 userId + conversationId 独立计数
-│     → 少于 10 条保持未扫描；每组只取最早 20 条
+│     → 只读取 sequence 大于会话扫描游标的用户消息
+│     → 少于 10 条保持待处理；每组只取最早 20 条
 │
 ├─ 2. 加载每组 target 的理解上下文
 │     loadExtractionContext(...)
@@ -88,9 +89,11 @@ MemoryExtractionService.processPendingForUser(userId)
 ├─ 6. 最多应用两条记忆
 │     memoryService.applyCandidates(userId, admitted.slice(0, 2))
 │
-└─ 7. 标记 target messages
-      成功（包括 shouldSave=false 或未通过校验）→ memory_scanned_at = now
-      调用或保存失败       → 保持 NULL，下次任务重试
+└─ 7. 推进会话扫描游标
+      成功（包括 shouldSave=false 或未通过校验）
+        → memory_scanned_through_sequence = 本批最大 sequence
+      调用或保存失败
+        → 游标不变，下次任务重试
 ```
 
 ### 2. 记忆应用 (去重合并)

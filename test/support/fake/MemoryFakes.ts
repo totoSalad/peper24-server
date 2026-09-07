@@ -13,7 +13,16 @@ export class InMemoryMemoryRepository extends MemoryRepository {
   readonly changes: Array<{ memoryId: string; action: string }> = [];
   unscannedMessages: MemorySourceMessage[] = [];
   extractionMessages: MemorySourceMessage[] = [];
-  readonly scannedMessageIds: string[] = [];
+  readonly memoryScanCursors = new Map<string, number>();
+
+  pendingMessages(userId?: string, conversationId?: string): MemorySourceMessage[] {
+    return this.unscannedMessages.filter(message => {
+      if (userId && message.userId !== userId) return false;
+      if (conversationId && message.conversationId !== conversationId) return false;
+      const cursor = this.memoryScanCursors.get(`${message.userId}\u0000${message.conversationId}`) ?? 0;
+      return message.sequence > cursor;
+    });
+  }
 
   async list(userId: string, now: Date): Promise<MemoryRecord[]> {
     return this.items.filter(item => item.userId === userId
@@ -49,7 +58,7 @@ export class InMemoryMemoryRepository extends MemoryRepository {
     maximumGroups: number;
   }) {
     const grouped = new Map<string, MemorySourceMessage[]>();
-    for (const message of this.unscannedMessages.filter(item => item.userId === input.userId)) {
+    for (const message of this.pendingMessages(input.userId)) {
       const key = `${message.userId}\u0000${message.conversationId}`;
       const group = grouped.get(key) ?? [];
       group.push(message);
@@ -79,14 +88,9 @@ export class InMemoryMemoryRepository extends MemoryRepository {
       && item.userId === userId);
   }
 
-  async markMessagesScanned(userId: string, messageIds: string[]) {
-    const owned = new Set(this.unscannedMessages.filter(item => item.userId === userId)
-      .map(item => item.id));
-    for (const id of messageIds) {
-      if (owned.has(id)) this.scannedMessageIds.push(id);
-    }
-    const scanned = new Set(this.scannedMessageIds);
-    this.unscannedMessages = this.unscannedMessages.filter(item => !scanned.has(item.id));
+  async advanceMemoryScanCursor(userId: string, conversationId: string, throughSequence: number) {
+    const key = `${userId}\u0000${conversationId}`;
+    this.memoryScanCursors.set(key, Math.max(this.memoryScanCursors.get(key) ?? 0, throughSequence));
   }
 
   async applyCandidates(input: ApplyMemoryCandidatesInput): Promise<MemoryRecord[]> {

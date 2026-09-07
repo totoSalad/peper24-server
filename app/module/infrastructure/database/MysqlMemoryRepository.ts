@@ -96,7 +96,7 @@ export class MysqlMemoryRepository extends MemoryRepository {
           MIN(m.created_at) OVER (PARTITION BY c.user_id, m.conversation_id) AS first_pending_at
         FROM messages m JOIN conversations c ON c.id = m.conversation_id
         WHERE c.user_id = ? AND m.role = 'user' AND m.status = 'completed'
-          AND m.memory_scanned_at IS NULL
+          AND m.sequence > c.memory_scanned_through_sequence
       ), eligible_groups AS (
         SELECT user_id, conversation_id, MIN(first_pending_at) AS first_pending_at
         FROM ranked
@@ -172,16 +172,17 @@ export class MysqlMemoryRepository extends MemoryRepository {
     return [ ...messages.values() ].sort((left, right) => left.sequence - right.sequence);
   }
 
-  async markMessagesScanned(userId: string, messageIds: string[], scannedAt: Date): Promise<void> {
-    if (!messageIds.length) return;
+  async advanceMemoryScanCursor(
+    userId: string,
+    conversationId: string,
+    throughSequence: number,
+  ): Promise<void> {
     const realm = await this.databaseService.getRealm();
-    const placeholders = messageIds.map(() => '?').join(', ');
     await realm.query(`
-      UPDATE messages m JOIN conversations c ON c.id = m.conversation_id
-      SET m.memory_scanned_at = ?
-      WHERE c.user_id = ? AND m.role = 'user' AND m.memory_scanned_at IS NULL
-        AND m.id IN (${placeholders})
-    `, [ scannedAt, userId, ...messageIds ]);
+      UPDATE conversations
+      SET memory_scanned_through_sequence = GREATEST(memory_scanned_through_sequence, ?)
+      WHERE id = ? AND user_id = ?
+    `, [ throughSequence, conversationId, userId ]);
   }
 
   async applyCandidates(input: ApplyMemoryCandidatesInput): Promise<MemoryRecord[]> {

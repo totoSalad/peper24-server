@@ -209,7 +209,6 @@ export class MysqlConversationRepository extends ConversationRepository {
     content: string,
     usage: AIUsage,
     grammarGroups: GrammarOccurrenceGroup[],
-    toolEvents: Array<Extract<import('../../ai/service/ProductAIService').ChatEvent, { type: 'tool.call' | 'tool.result' }>>,
     updatedAt: Date,
   ): Promise<Correction[]> {
     const realm = await this.databaseService.getRealm();
@@ -237,7 +236,6 @@ export class MysqlConversationRepository extends ConversationRepository {
           content,
           status: 'completed',
           correctionJson: corrections.length ? JSON.stringify(corrections) : null,
-          toolEventsJson: toolEvents.length ? JSON.stringify(toolEvents) : null,
           updatedAt,
         },
         { connection },
@@ -267,7 +265,7 @@ export class MysqlConversationRepository extends ConversationRepository {
       `, [ userId, usageDate, tokenCount, updatedAt, updatedAt ]);
       await Conversation.update(
         { id: conversationId, userId },
-        { updatedAt, memoryDirtyAt: updatedAt },
+        { updatedAt },
         { connection },
       );
       return corrections;
@@ -375,7 +373,7 @@ export class MysqlConversationRepository extends ConversationRepository {
       if (updated !== 1) throw new AppError('MESSAGE_NOT_FOUND', '消息不存在', 404);
       await Conversation.update(
         { id: conversationId, userId },
-        { updatedAt: patch.updatedAt, memoryDirtyAt: patch.updatedAt },
+        { updatedAt: patch.updatedAt },
         { connection },
       );
     });
@@ -458,7 +456,6 @@ export class MysqlConversationRepository extends ConversationRepository {
       content: item.content,
       translation: item.translation ?? undefined,
       correctionJson: item.correctionJson ?? undefined,
-      toolEventsJson: item.toolEventsJson ?? undefined,
       clientRequestId: item.clientRequestId ?? undefined,
       sequence: Number(item.sequence),
       createdAt: new Date(item.createdAt),
@@ -474,7 +471,6 @@ export class MysqlConversationRepository extends ConversationRepository {
       content: String(row.content),
       ...(row.translation ? { translation: String(row.translation) } : {}),
       ...(row.correction_json ? { correctionJson: String(row.correction_json) } : {}),
-      ...(row.tool_events_json ? { toolEventsJson: String(row.tool_events_json) } : {}),
       ...(row.client_request_id ? { clientRequestId: String(row.client_request_id) } : {}),
       sequence: Number(row.sequence),
       createdAt: new Date(String(row.created_at)), updatedAt: new Date(String(row.updated_at)),

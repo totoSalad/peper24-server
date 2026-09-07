@@ -13,9 +13,7 @@ export default class Message extends Bone {
   declare content: string;
   declare translation?: string;
   declare correctionJson?: string;
-  declare toolEventsJson?: string;
   declare clientRequestId?: string;
-  declare memoryScannedAt?: Date;
   declare sequence: number;
   declare createdAt: Date;
   declare updatedAt: Date;

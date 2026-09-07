@@ -54,7 +54,7 @@ flowchart TB
 |---|---|---|---|---|---|
 | **对话陪练** | 核心 | `Conversation` | `Message`（聚合内实体）、`Scene`、`ChatEvent`（值对象）、`ClientRequestId` | `ConversationService`：幂等屏障、sequence 递增、中断恢复、流式编排 | `conversations`、`messages` |
 | **语法反馈** | 核心 | `GrammarErrorPattern` | `GrammarErrorOccurrence`、`Correction`、16 类 `GrammarErrorType`（值对象） | `GrammarService.prepare`：归一化/去重/分组；**第 2 次纠正规则**（occurrence_count===2 && !corrected_at） | `grammar_error_patterns`、`grammar_error_occurrences` |
-| **词汇与间隔复习** | 核心 | `Vocabulary` | `ReviewState`、`VocabularyContext`、`ReviewResult`（again/hard/good/easy 值对象） | `VocabularyService` + `ReviewScheduler`（SM-2 纯函数）、normalizedExpression 去重、来源消息校验 | `vocabularies`、`vocabulary_contexts`、`review_states`、`review_logs` |
+| **词汇与间隔复习** | 核心 | `Vocabulary` | `ReviewState`、`ReviewResult`（again/hard/good/easy 值对象） | `VocabularyService` + `ReviewScheduler`（SM-2 纯函数）、normalizedExpression 去重、来源消息校验 | `vocabularies`、`review_states`、`review_logs` |
 | **学习者记忆** | 核心 | `Memory` | `MemorySource`、`MemoryChangeLog`、`MemoryType`/`AdmissionScore`/`normalizedKey`（值对象） | `MemoryService`（合并/淘汰/过期/软删除）、`MemoryExtractionService`（AI 提取编排）、`MemoryAdmissionPolicy`（准入分复算、秘密拒绝） | `memories`、`memory_sources`、`memory_change_logs` |
 | **学习小结** | 核心 | `DailyLearningSummary` | `DailyLearningMetrics`、`SummaryContent`（值对象）、`sourceVersion`（SHA-256） | `LearningSummaryService`：上海自然日聚合、claim 防并发、模板降级、finalize 固化 | `daily_learning_summaries` |
 | **AI 能力** | 支撑（防腐层） | 无业务聚合 | `ChatEvent`、`LearnerContext`、结构化输出 Schema（值对象） | `ProductAIService`（抽象）+ `AISDKProductAIService`（适配器）、`ConfiguredTextModelProvider`、`PromptContextCompressor` | `ai_usage_logs`（技术观测） |

@@ -44,5 +44,7 @@ package-lock.json
 scripts/prompt-debug/**/*.local.json
 scripts/prompt-debug/**/results/
 backups
-database
+database/*
+!database/migrations/
+!database/migrations/*.js
 .env.example

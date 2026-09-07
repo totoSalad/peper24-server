@@ -9,7 +9,7 @@ export default class Conversation extends Bone {
   declare status: ConversationStatus;
   declare summary?: string;
   declare summaryFoldedUntil?: number;
-  declare memoryDirtyAt?: Date;
+  declare memoryScannedThroughSequence: number;
   declare nextMessageSequence: number;
   declare createdAt: Date;
   declare updatedAt: Date;

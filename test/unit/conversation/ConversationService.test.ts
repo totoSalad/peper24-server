@@ -531,7 +531,6 @@ describe('ConversationService', () => {
     await new Promise<void>(resolve => setImmediate(resolve));
     assert.equal(vocabularyRepository.items.length, 1);
     assert.equal(vocabularyRepository.items[0].expression, 'daikon radish');
-    assert.equal(vocabularyRepository.contexts[0].sentence, input.content);
   });
 
   it('recognizes and saves the Chinese expression from `for "散心"`', async () => {
@@ -576,7 +575,6 @@ describe('ConversationService', () => {
     assert.equal(ai.vocabularyCalls, 1);
     assert.equal(vocabularyRepository.items.length, 1);
     assert.equal(vocabularyRepository.items[0].expression, 'clear your head');
-    assert.equal(vocabularyRepository.contexts[0].sentence, content);
   });
 
   it('silently ignores an embedded person name rejected by vocabulary enrichment', async () => {

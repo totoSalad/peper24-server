@@ -76,7 +76,7 @@ export class VocabularyService {
       );
     }
     if (!resolved) return null;
-    return this.saveEnriched(userId, resolved.expression, source, resolved.info);
+    return this.saveEnriched(userId, resolved.expression, resolved.info);
   }
 
   /**
@@ -110,24 +110,16 @@ export class VocabularyService {
     userId: string,
     expression: string,
     info: VocabularyEnrichment,
-    sourceMessageId: string,
-    sourceContent: string,
   ) {
-    return this.saveEnriched(
-      userId,
-      expression,
-      { id: sourceMessageId, content: sourceContent },
-      info,
-    );
+    return this.saveEnriched(userId, expression, info);
   }
 
   private async saveEnriched(
     userId: string,
-    originalExpression: string,
-    source: { id: string; content: string },
+    expression: string,
     info: VocabularyEnrichment,
   ) {
-    const normalizedExpression = normalizeExpression(originalExpression);
+    const normalizedExpression = normalizeExpression(expression);
     if (!normalizedExpression) {
       throw new AppError('VOCABULARY_ENRICHMENT_FAILED', '词汇补充结果不完整', 502);
     }
@@ -136,8 +128,7 @@ export class VocabularyService {
       vocabulary: {
         id: this.ids.next(),
         userId,
-        originalExpression,
-        expression: originalExpression,
+        expression,
         normalizedExpression,
         detail: {
           cnMeaning: info.cnMeaning,
@@ -148,13 +139,6 @@ export class VocabularyService {
         lastEncounteredAt: now,
         createdAt: now,
         updatedAt: now,
-      },
-      context: {
-        id: this.ids.next(),
-        vocabularyId: '',
-        messageId: source.id,
-        sentence: source.content,
-        createdAt: now,
       },
       initialReviewState: {
         vocabularyId: '',
