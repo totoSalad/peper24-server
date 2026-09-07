@@ -46,7 +46,6 @@ ConversationRecord                    MessageRecord
 └──────────────────────┘            │ content                  │
                                     │ translation (可选)       │
                                     │ correctionJson (可选)    │
-                                    │ toolEventsJson (可选)    │
                                     │ clientRequestId (可选)   │
                                     │ createdAt/updatedAt      │
                                     └──────────────────────────┘
@@ -106,7 +105,7 @@ POST /api/v1/conversations/:id/messages/stream
 
 ### 对话中的生词自动收集
 
-- 聊天模型不挂载词汇 Tool，SSE 新链路不产生 `tool.call` / `tool.result`。
+- 聊天模型不挂载词汇 Tool，生词识别由服务端后台逻辑完成。
 - `ConversationService` 在调用 `ai.chat()` 前检测用户消息；一般要求至少两个英文词，另外明确支持 `for "散心"` 这种简写。
 - `How do I say "散心" in English`、`"散心" means ...` 和普通英文句子夹中文都会提取中文表达；`怎么说` 等请求标记自身不会被当成生词。
 - 人名和“called X in Chinese”类标签会被过滤；同轮去重，最多提取 3 个。

@@ -292,7 +292,7 @@ DELETE /api/v1/memories/:id
 - `significant_fact`：长期；
 - `short_term`：默认 7 天。
 
-Worker 每 20 分钟巡检一次。按用户和会话统计已完成且未扫描的用户消息：不足 10 条不处理；合格会话每轮读取最早最多 20 条，只调用一次 AI，并最多改变两条记忆。
+Worker 每 20 分钟巡检一次。按用户和会话统计 `sequence > memory_scanned_through_sequence` 的已完成用户消息：不足 10 条不处理；合格会话每轮读取最早最多 20 条，只调用一次 AI，并最多改变两条记忆。
 
 AI 返回一至两个最终准入决策；没有合格记忆时返回一个 `shouldSave=false` 决策，并且始终不输出原文。服务端校验来源、秘密、明确性并复算准入分后才能落库；新建的 `content` 取数据库来源消息原文，同 key 更新只修改 `summary` 和来源。长期记忆不自动过期，短期记忆只允许 7、14 或 30 天。
 
@@ -345,7 +345,7 @@ Prompt 固定按以下顺序组装：
 - 生产环境未设置 `AI_TEXT_PROVIDER` 时默认使用 `deepseek`；翻译仍按独立用途走百炼。
   缺少相应密钥时直接报告不可用，不降级到开发实现。
 
-业务模块看不到 AI SDK、DeepSeek 或百炼类型。Provider 只把 `fullStream` 中的文本增量、工具事件、完成原因和 Token 用量转换成稳定的产品事件。当前 `ai_usage_logs` 记录成功完成的聊天调用；欢迎语用量、失败调用延迟和错误码在监控切片补充。
+业务模块看不到 AI SDK、DeepSeek 或百炼类型。Provider 只把 `fullStream` 中的文本增量、完成原因和 Token 用量转换成稳定的产品事件。当前 `ai_usage_logs` 记录成功完成的聊天调用；欢迎语用量、失败调用延迟和错误码在监控切片补充。
 
 ## 7. 数据库
 
@@ -355,7 +355,7 @@ Prompt 固定按以下顺序组装：
 |---|---|
 | `users` | id, email, password_hash, status, created_at, updated_at |
 | `user_profiles` | user_id, display_name, age, occupation, english_level |
-| `conversations` | id, user_id, topic, status, memory_dirty_at, next_message_sequence |
+| `conversations` | id, user_id, topic, status, memory_scanned_through_sequence, next_message_sequence |
 | `messages` | id, conversation_id, sequence, role, status, content, translation, correction_json, client_request_id |
 | `ai_usage_logs` | message_id, user_id, conversation_id, task, provider, model, input_tokens, output_tokens, status |
 | `daily_chat_token_usages` | user_id, usage_date, token_count, created_at, updated_at |
@@ -367,7 +367,7 @@ Prompt 固定按以下顺序组装：
 
 | 表 | 用途 |
 |---|---|
-| `vocabularies`、`vocabulary_contexts` | 生词和来源上下文（已实现） |
+| `vocabularies` | 生词主记录（已实现） |
 | `review_states`、`review_logs` | SM-2 和答题依据（已实现） |
 | `memories`、`memory_sources`、`memory_change_logs` | 记忆原文、习惯/事实总结及变更审计 |
 | `voice_recordings`、`speech_audio_assets`、`message_audios` | 已下线语音功能的历史表，仅保留数据兼容，不再由运行时代码访问 |

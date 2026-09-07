@@ -5,6 +5,7 @@ import {
   MemoryRepository,
   MemorySourceMessage,
 } from '../../../app/module/memory/service/MemoryPorts';
+import { Memory } from '../../../app/module/memory/domain/Memory';
 
 export class InMemoryMemoryRepository extends MemoryRepository {
   readonly items: MemoryRecord[] = [];
@@ -12,7 +13,16 @@ export class InMemoryMemoryRepository extends MemoryRepository {
   readonly changes: Array<{ memoryId: string; action: string }> = [];
   unscannedMessages: MemorySourceMessage[] = [];
   extractionMessages: MemorySourceMessage[] = [];
-  readonly scannedMessageIds: string[] = [];
+  readonly memoryScanCursors = new Map<string, number>();
+
+  pendingMessages(userId?: string, conversationId?: string): MemorySourceMessage[] {
+    return this.unscannedMessages.filter(message => {
+      if (userId && message.userId !== userId) return false;
+      if (conversationId && message.conversationId !== conversationId) return false;
+      const cursor = this.memoryScanCursors.get(`${message.userId}\u0000${message.conversationId}`) ?? 0;
+      return message.sequence > cursor;
+    });
+  }
 
   async list(userId: string, now: Date): Promise<MemoryRecord[]> {
     return this.items.filter(item => item.userId === userId
@@ -48,7 +58,7 @@ export class InMemoryMemoryRepository extends MemoryRepository {
     maximumGroups: number;
   }) {
     const grouped = new Map<string, MemorySourceMessage[]>();
-    for (const message of this.unscannedMessages.filter(item => item.userId === input.userId)) {
+    for (const message of this.pendingMessages(input.userId)) {
       const key = `${message.userId}\u0000${message.conversationId}`;
       const group = grouped.get(key) ?? [];
       group.push(message);
@@ -78,74 +88,43 @@ export class InMemoryMemoryRepository extends MemoryRepository {
       && item.userId === userId);
   }
 
-  async markMessagesScanned(userId: string, messageIds: string[]) {
-    const owned = new Set(this.unscannedMessages.filter(item => item.userId === userId)
-      .map(item => item.id));
-    for (const id of messageIds) {
-      if (owned.has(id)) this.scannedMessageIds.push(id);
-    }
-    const scanned = new Set(this.scannedMessageIds);
-    this.unscannedMessages = this.unscannedMessages.filter(item => !scanned.has(item.id));
+  async advanceMemoryScanCursor(userId: string, conversationId: string, throughSequence: number) {
+    const key = `${userId}\u0000${conversationId}`;
+    this.memoryScanCursors.set(key, Math.max(this.memoryScanCursors.get(key) ?? 0, throughSequence));
   }
 
   async applyCandidates(input: ApplyMemoryCandidatesInput): Promise<MemoryRecord[]> {
     const changed: MemoryRecord[] = [];
+    const context = { now: input.now, expiryFor: input.expiryFor };
     for (const candidate of input.candidates) {
       const matching = this.items.find(item => item.userId === input.userId
         && item.type === candidate.type && item.normalizedKey === candidate.normalizedKey);
       const sourceIds = new Set(candidate.sourceMessageIds);
-      if (matching?.status === 'deleted') {
-        const known = this.sources.get(matching.id) ?? new Set<string>();
-        if ([ ...sourceIds ].every(id => known.has(id))) continue;
-        matching.summary = candidate.summary;
-        matching.confidence = candidate.confidence;
-        matching.admissionScore = candidate.admissionScore;
-        matching.explicitlyRequested = candidate.explicitlyRequested;
-        matching.admissionReason = candidate.admissionReason;
-        matching.assessmentJson = candidate.assessmentJson;
-        matching.status = 'active';
-        matching.expiresAt = input.expiryFor(candidate);
-        matching.deletedAt = undefined;
-        matching.updatedAt = input.now;
-        for (const id of sourceIds) known.add(id);
-        this.sources.set(matching.id, known);
-        this.changes.push({ memoryId: matching.id, action: 'add' });
-        changed.push({ ...matching });
-        continue;
-      }
-      if (matching?.status === 'superseded') {
-        matching.summary = candidate.summary;
-        matching.confidence = candidate.confidence;
-        matching.admissionScore = candidate.admissionScore;
-        matching.explicitlyRequested = candidate.explicitlyRequested;
-        matching.admissionReason = candidate.admissionReason;
-        matching.assessmentJson = candidate.assessmentJson;
-        matching.status = 'active';
-        matching.expiresAt = input.expiryFor(candidate);
-        matching.updatedAt = input.now;
-        const known = this.sources.get(matching.id) ?? new Set<string>();
-        for (const id of sourceIds) known.add(id);
-        this.sources.set(matching.id, known);
-        this.changes.push({ memoryId: matching.id, action: 'restore' });
-        changed.push({ ...matching });
-        continue;
-      }
-      if (matching?.status === 'active') {
-        const known = this.sources.get(matching.id) ?? new Set<string>();
-        for (const id of sourceIds) known.add(id);
-        this.sources.set(matching.id, known);
-        if (matching.summary !== candidate.summary) {
-          matching.summary = candidate.summary;
-          matching.confidence = candidate.confidence;
-          matching.admissionScore = candidate.admissionScore;
-          matching.explicitlyRequested = candidate.explicitlyRequested;
-          matching.admissionReason = candidate.admissionReason;
-          matching.assessmentJson = candidate.assessmentJson;
-          matching.expiresAt = input.expiryFor(candidate);
-          matching.updatedAt = input.now;
+      if (matching) {
+        // 状态转换规则全部委托给充血领域类 Memory。
+        // 两个分支顺序语义不同（对齐原实现与 MySQL 版）：
+        // - active：先记录新来源，再判断 summary 是否有变更；
+        // - deleted/superseded：先用旧来源集合判断是否全部已知（全部已知则不复活）。
+        const current = Memory.fromRecord(matching);
+        if (current.status === 'active') {
+          const known = this.sources.get(matching.id) ?? new Set<string>();
+          for (const id of sourceIds) known.add(id);
+          this.sources.set(matching.id, known);
+          const after = current.mergeWith(candidate, context);
+          if (!after) continue;
           this.changes.push({ memoryId: matching.id, action: 'replace' });
-          changed.push({ ...matching });
+          changed.push(after.toRecord());
+          Object.assign(matching, after.toRecord());
+          continue;
         }
+        const known = this.sources.get(matching.id) ?? new Set<string>();
+        const after = current.reactivate(candidate, context, known);
+        if (!after) continue;
+        for (const id of sourceIds) known.add(id);
+        this.sources.set(matching.id, known);
+        this.changes.push({ memoryId: matching.id, action: matching.status === 'deleted' ? 'add' : 'restore' });
+        changed.push(after.toRecord());
+        Object.assign(matching, after.toRecord());
         continue;
       }
       const item = input.create(candidate);
@@ -166,8 +145,8 @@ export class InMemoryMemoryRepository extends MemoryRepository {
           || right.createdAt.getTime() - left.createdAt.getTime()
           || right.id.localeCompare(left.id));
       for (const item of active.slice(limit)) {
-        item.status = 'superseded';
-        item.updatedAt = input.now;
+        const evicted = Memory.fromRecord(item).supersede(input.now);
+        Object.assign(item, evicted.toRecord());
         this.changes.push({ memoryId: item.id, action: 'evict' });
       }
     }
@@ -179,8 +158,8 @@ export class InMemoryMemoryRepository extends MemoryRepository {
         || right.createdAt.getTime() - left.createdAt.getTime()
         || right.id.localeCompare(left.id));
     for (const item of longTerm.slice(input.longTermLimit)) {
-      item.status = 'superseded';
-      item.updatedAt = input.now;
+      const evicted = Memory.fromRecord(item).supersede(input.now);
+      Object.assign(item, evicted.toRecord());
       this.changes.push({ memoryId: item.id, action: 'evict' });
     }
     return changed;

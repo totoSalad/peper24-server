@@ -41,18 +41,10 @@ VocabularyRecord            ReviewStateRecord
 │ userId               │   │ repetitions: number  │
 │ expression           │   │ intervalDays: number │
 │ normalizedExpression │   │ easinessFactor: num  │
-│ originalExpression   │   │ nextReviewAt: Date   │
-│ phonetic             │   │ updatedAt: Date      │
-│ partOfSpeech         │   └──────────────────────┘
-│ meaning              │
-│ example              │   VocabularyContextRecord
-│ lastEncounteredAt    │   ┌──────────────────────┐
-│ createdAt/updatedAt  │   │ id                   │
-└──────────────────────┘   │ vocabularyId         │
-                           │ messageId            │
-                           │ sentence             │
-                           │ createdAt            │
-                           └──────────────────────┘
+│ detail               │   │ nextReviewAt: Date   │
+│ lastEncounteredAt    │   │ updatedAt: Date      │
+│ createdAt/updatedAt  │   └──────────────────────┘
+└──────────────────────┘
 ```
 
 ## 核心流程
@@ -87,7 +79,6 @@ POST /api/v1/vocabularies
 └─ 5. 保存
       saveEnriched()
       ├─ 创建 VocabularyRecord
-      ├─ 创建 VocabularyContextRecord (来源消息ID)
       └─ 创建 ReviewStateRecord (初始复习状态)
            repetitions=0, intervalDays=0
            easinessFactor=2.5, nextReviewAt=now (立即可复习)
@@ -102,7 +93,6 @@ extractEmbeddedChineseExpressions() → enrichExpression() → addFromConversati
 │
 ├─ saveEnriched()
 │     直接使用已获取的词汇信息
-│     关联到当前消息
 │     → 用户无需手动操作，对话中自动加入生词本
 │
 └─ 该后台任务不被 chat 或 message.done await，失败仅记录 warning

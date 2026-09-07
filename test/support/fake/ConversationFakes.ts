@@ -152,7 +152,6 @@ export class InMemoryConversationRepository implements ConversationRepository {
     content: string,
     usage: AIUsage,
     grammarGroups: GrammarOccurrenceGroup[],
-    toolEvents: Array<Extract<ChatEvent, { type: 'tool.call' | 'tool.result' }>>,
     updatedAt: Date,
   ): Promise<Correction[]> {
     const assistant = this.messages.find(item => item.id === messageId);
@@ -174,7 +173,6 @@ export class InMemoryConversationRepository implements ConversationRepository {
       content,
       status: 'completed',
       correctionJson: corrections.length ? JSON.stringify(corrections) : undefined,
-      toolEventsJson: toolEvents.length ? JSON.stringify(toolEvents) : undefined,
       updatedAt,
     });
     this.usageByMessage.set(messageId, usage);

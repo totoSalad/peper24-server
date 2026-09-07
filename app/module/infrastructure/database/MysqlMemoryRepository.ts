@@ -1,4 +1,5 @@
 import { AccessLevel, Inject, SingletonProto } from '@eggjs/tegg';
+import { Memory } from '../../memory/domain/Memory';
 import {
   ApplyMemoryCandidatesInput,
   MemoryRecord,
@@ -95,7 +96,7 @@ export class MysqlMemoryRepository extends MemoryRepository {
           MIN(m.created_at) OVER (PARTITION BY c.user_id, m.conversation_id) AS first_pending_at
         FROM messages m JOIN conversations c ON c.id = m.conversation_id
         WHERE c.user_id = ? AND m.role = 'user' AND m.status = 'completed'
-          AND m.memory_scanned_at IS NULL
+          AND m.sequence > c.memory_scanned_through_sequence
       ), eligible_groups AS (
         SELECT user_id, conversation_id, MIN(first_pending_at) AS first_pending_at
         FROM ranked
@@ -171,16 +172,17 @@ export class MysqlMemoryRepository extends MemoryRepository {
     return [ ...messages.values() ].sort((left, right) => left.sequence - right.sequence);
   }
 
-  async markMessagesScanned(userId: string, messageIds: string[], scannedAt: Date): Promise<void> {
-    if (!messageIds.length) return;
+  async advanceMemoryScanCursor(
+    userId: string,
+    conversationId: string,
+    throughSequence: number,
+  ): Promise<void> {
     const realm = await this.databaseService.getRealm();
-    const placeholders = messageIds.map(() => '?').join(', ');
     await realm.query(`
-      UPDATE messages m JOIN conversations c ON c.id = m.conversation_id
-      SET m.memory_scanned_at = ?
-      WHERE c.user_id = ? AND m.role = 'user' AND m.memory_scanned_at IS NULL
-        AND m.id IN (${placeholders})
-    `, [ scannedAt, userId, ...messageIds ]);
+      UPDATE conversations
+      SET memory_scanned_through_sequence = GREATEST(memory_scanned_through_sequence, ?)
+      WHERE id = ? AND user_id = ?
+    `, [ throughSequence, conversationId, userId ]);
   }
 
   async applyCandidates(input: ApplyMemoryCandidatesInput): Promise<MemoryRecord[]> {
@@ -198,6 +200,7 @@ export class MysqlMemoryRepository extends MemoryRepository {
     const realm = await this.databaseService.getRealm();
     return realm.transaction(async ({ connection }) => {
       const changed: MemoryRecord[] = [];
+      const context = { now: input.now, expiryFor: input.expiryFor };
       for (const candidate of input.candidates) {
         const rows = await this.query<Row[]>(connection, `
           SELECT * FROM memories WHERE user_id = ? AND type = ? AND normalized_key = ?
@@ -205,26 +208,21 @@ export class MysqlMemoryRepository extends MemoryRepository {
         `, [ input.userId, candidate.type, candidate.normalizedKey ]);
         const activeRow = rows.find(row => row.status === 'active');
         if (activeRow) {
-          const current = this.toRecord(activeRow);
+          const current = Memory.fromRecord(this.toRecord(activeRow));
+          // 与领域类约定一致：来源先记录（即使 summary 未变也记录新来源）。
           await this.insertSources(connection, current.id, candidate.sourceMessageIds, input.now);
-          if (current.summary !== candidate.summary) {
-            const after = {
-              ...current, summary: candidate.summary, admissionScore: candidate.admissionScore,
-              explicitlyRequested: candidate.explicitlyRequested,
-              admissionReason: candidate.admissionReason, assessmentJson: candidate.assessmentJson,
-              confidence: candidate.confidence,
-              expiresAt: input.expiryFor(candidate), updatedAt: input.now,
-            };
-            await this.query(connection, `
-              UPDATE memories SET summary = ?, confidence = ?, admission_score = ?,
-                explicitly_requested = ?, admission_reason = ?, assessment_json = ?,
-                expires_at = ?, updated_at = ? WHERE id = ?
-            `, [ after.summary, after.confidence, after.admissionScore,
-              after.explicitlyRequested ? 1 : 0, after.admissionReason, after.assessmentJson,
-              after.expiresAt ?? null, input.now, current.id ]);
-            await this.log(connection, current.id, input.userId, 'replace', current, after, input.now);
-            changed.push(after);
-          }
+          const after = current.mergeWith(candidate, context);
+          if (!after) continue;
+          const record = after.toRecord();
+          await this.query(connection, `
+            UPDATE memories SET summary = ?, confidence = ?, admission_score = ?,
+              explicitly_requested = ?, admission_reason = ?, assessment_json = ?,
+              expires_at = ?, updated_at = ? WHERE id = ?
+          `, [ record.summary, record.confidence, record.admissionScore,
+            record.explicitlyRequested ? 1 : 0, record.admissionReason, record.assessmentJson,
+            record.expiresAt ?? null, input.now, current.id ]);
+          await this.log(connection, current.id, input.userId, 'replace', current.toRecord(), record, input.now);
+          changed.push(record);
           continue;
         }
         const deletedRow = rows.find(row => row.status === 'deleted');
@@ -235,57 +233,39 @@ export class MysqlMemoryRepository extends MemoryRepository {
             WHERE memory_id = ? AND message_id IN (${placeholders})
           `, [ String(deletedRow.id), ...candidate.sourceMessageIds ]);
           if (known.length === candidate.sourceMessageIds.length) continue;
-          const before = this.toRecord(deletedRow);
-          const after: MemoryRecord = {
-            ...before,
-            summary: candidate.summary,
-            confidence: candidate.confidence,
-            admissionScore: candidate.admissionScore,
-            explicitlyRequested: candidate.explicitlyRequested,
-            admissionReason: candidate.admissionReason,
-            assessmentJson: candidate.assessmentJson,
-            status: 'active',
-            expiresAt: input.expiryFor(candidate),
-            deletedAt: undefined,
-            updatedAt: input.now,
-          };
+          const current = Memory.fromRecord(this.toRecord(deletedRow));
+          const knownIds = new Set(known.map(row => String(row.message_id)));
+          const after = current.reactivate(candidate, context, knownIds);
+          if (!after) continue;
+          const record = after.toRecord();
           await this.query(connection, `
             UPDATE memories SET summary = ?, confidence = ?, admission_score = ?,
               explicitly_requested = ?, admission_reason = ?, assessment_json = ?,
               status = 'active', expires_at = ?, deleted_at = NULL, updated_at = ? WHERE id = ?
-          `, [ after.summary, after.confidence, after.admissionScore,
-            after.explicitlyRequested ? 1 : 0, after.admissionReason, after.assessmentJson,
-            after.expiresAt ?? null, input.now, after.id ]);
-          await this.insertSources(connection, after.id, candidate.sourceMessageIds, input.now);
-          await this.log(connection, after.id, input.userId, 'add', before, after, input.now);
-          changed.push(after);
+          `, [ record.summary, record.confidence, record.admissionScore,
+            record.explicitlyRequested ? 1 : 0, record.admissionReason, record.assessmentJson,
+            record.expiresAt ?? null, input.now, record.id ]);
+          await this.insertSources(connection, record.id, candidate.sourceMessageIds, input.now);
+          await this.log(connection, record.id, input.userId, 'add', current.toRecord(), record, input.now);
+          changed.push(record);
           continue;
         }
         const supersededRow = rows.find(row => row.status === 'superseded');
         if (supersededRow) {
-          const before = this.toRecord(supersededRow);
-          const after: MemoryRecord = {
-            ...before,
-            summary: candidate.summary,
-            confidence: candidate.confidence,
-            admissionScore: candidate.admissionScore,
-            explicitlyRequested: candidate.explicitlyRequested,
-            admissionReason: candidate.admissionReason,
-            assessmentJson: candidate.assessmentJson,
-            status: 'active',
-            expiresAt: input.expiryFor(candidate),
-            updatedAt: input.now,
-          };
+          const current = Memory.fromRecord(this.toRecord(supersededRow));
+          const after = current.reactivate(candidate, context, new Set());
+          if (!after) continue;
+          const record = after.toRecord();
           await this.query(connection, `
             UPDATE memories SET summary = ?, confidence = ?, admission_score = ?,
               explicitly_requested = ?, admission_reason = ?, assessment_json = ?,
               status = 'active', expires_at = ?, updated_at = ? WHERE id = ?
-          `, [ after.summary, after.confidence, after.admissionScore,
-            after.explicitlyRequested ? 1 : 0, after.admissionReason, after.assessmentJson,
-            after.expiresAt ?? null, input.now, after.id ]);
-          await this.insertSources(connection, after.id, candidate.sourceMessageIds, input.now);
-          await this.log(connection, after.id, input.userId, 'restore', before, after, input.now);
-          changed.push(after);
+          `, [ record.summary, record.confidence, record.admissionScore,
+            record.explicitlyRequested ? 1 : 0, record.admissionReason, record.assessmentJson,
+            record.expiresAt ?? null, input.now, record.id ]);
+          await this.insertSources(connection, record.id, candidate.sourceMessageIds, input.now);
+          await this.log(connection, record.id, input.userId, 'restore', current.toRecord(), record, input.now);
+          changed.push(record);
           continue;
         }
         const memory = input.create(candidate);
@@ -328,7 +308,7 @@ export class MysqlMemoryRepository extends MemoryRepository {
     `, [ input.userId, type, input.now ]);
     for (const row of rows.slice(limit)) {
       const before = this.toRecord(row);
-      const after: MemoryRecord = { ...before, status: 'superseded', updatedAt: input.now };
+      const after = Memory.fromRecord(before).supersede(input.now).toRecord();
       await this.query(connection,
         "UPDATE memories SET status = 'superseded', updated_at = ? WHERE id = ?",
         [ input.now, before.id ]);
@@ -349,7 +329,7 @@ export class MysqlMemoryRepository extends MemoryRepository {
     `, [ input.userId ]);
     for (const row of rows.slice(input.longTermLimit)) {
       const before = this.toRecord(row);
-      const after: MemoryRecord = { ...before, status: 'superseded', updatedAt: input.now };
+      const after = Memory.fromRecord(before).supersede(input.now).toRecord();
       await this.query(connection,
         "UPDATE memories SET status = 'superseded', updated_at = ? WHERE id = ?",
         [ input.now, before.id ]);

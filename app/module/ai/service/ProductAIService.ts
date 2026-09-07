@@ -167,8 +167,6 @@ export interface LearnerContext {
 export type ChatEvent =
   | { type: 'message.start'; messageId: string }
   | { type: 'message.delta'; messageId: string; delta: string }
-  | { type: 'tool.call'; toolCallId: string; name: string; input: unknown }
-  | { type: 'tool.result'; toolCallId: string; output: unknown }
   | { type: 'correction.ready'; messageId: string; correction: Correction }
   | { type: 'summary.update'; summary: string; foldedUntil: number }
   | { type: 'message.done'; messageId: string; usage: AIUsage }

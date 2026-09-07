@@ -1,6 +1,7 @@
 import { AccessLevel, Inject, SingletonProto } from '@eggjs/tegg';
 import type { LearnerMemory } from '../../ai/service/ProductAIService';
 import { AppError } from '../../system/error/AppError';
+import { Memory } from '../domain/Memory';
 import { Clock, IdGenerator } from '../../system/service/SystemPorts';
 import {
   MemoryCandidate,
@@ -105,23 +106,10 @@ export class MemoryService {
       expiryFor: candidate => expiryForMemory(candidate.type, now, candidate.temporaryDays),
       limitFor: limitForMemory,
       longTermLimit: 25,
-      create: candidate => ({
-        id: this.ids.next(),
-        userId,
-        type: candidate.type,
-        content: candidate.content,
-        summary: candidate.summary,
-        normalizedKey: candidate.normalizedKey,
-        confidence: candidate.confidence,
-        admissionScore: candidate.admissionScore,
-        explicitlyRequested: candidate.explicitlyRequested,
-        admissionReason: candidate.admissionReason,
-        assessmentJson: candidate.assessmentJson,
-        status: 'active',
-        expiresAt: expiryForMemory(candidate.type, now, candidate.temporaryDays),
-        createdAt: now,
-        updatedAt: now,
-      }),
+      create: candidate => Memory.create(userId, this.ids.next(), candidate, {
+        now,
+        expiryFor: item => expiryForMemory(item.type, now, item.temporaryDays),
+      }).toRecord(),
     });
   }
 

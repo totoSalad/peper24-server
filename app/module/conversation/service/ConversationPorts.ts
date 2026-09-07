@@ -30,7 +30,6 @@ export interface MessageRecord {
   content: string;
   translation?: string;
   correctionJson?: string;
-  toolEventsJson?: string;
   clientRequestId?: string;
   /** 会话内严格递增的展示与上下文顺序。 */
   sequence: number;
@@ -85,7 +84,6 @@ export abstract class ConversationRepository {
     content: string,
     usage: AIUsage,
     grammarGroups: GrammarOccurrenceGroup[],
-    toolEvents: Array<Extract<import('../../ai/service/ProductAIService').ChatEvent, { type: 'tool.call' | 'tool.result' }>>,
     updatedAt: Date,
   ): Promise<Correction[]>;
   abstract interruptAssistant(

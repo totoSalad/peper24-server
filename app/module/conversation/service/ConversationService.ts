@@ -295,7 +295,6 @@ export class ConversationService {
         generatedContent,
         doneUsage,
         grammarGroups,
-        [],
         this.clock.now(),
       );
       for (const correction of corrections) {
@@ -340,8 +339,6 @@ export class ConversationService {
         input.userId,
         resolved.expression,
         resolved.info,
-        input.sourceMessageId,
-        input.content,
       );
     } catch (error) {
       this.aiLogger.warn(
@@ -364,7 +361,6 @@ export class ConversationService {
     for (const correction of this.parseCorrections(message.correctionJson)) {
       yield { type: 'correction.ready', messageId: message.id, correction };
     }
-    for (const event of this.parseToolEvents(message.toolEventsJson)) yield event;
     yield { type: 'message.done', messageId: message.id, usage: replayUsage };
   }
 
@@ -372,12 +368,6 @@ export class ConversationService {
     if (!value) return [];
     const parsed = JSON.parse(value);
     return Array.isArray(parsed) ? parsed : [ parsed ];
-  }
-
-  private parseToolEvents(value?: string): Array<Extract<ChatEvent, { type: 'tool.call' | 'tool.result' }>> {
-    if (!value) return [];
-    const parsed = JSON.parse(value);
-    return Array.isArray(parsed) ? parsed : [];
   }
 
   private toConversation(conversation: ConversationRecord) {

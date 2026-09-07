@@ -82,10 +82,10 @@ export abstract class MemoryRepository {
     userId: string,
     targetMessages: MemorySourceMessage[],
   ): Promise<MemorySourceMessage[]>;
-  abstract markMessagesScanned(
+  abstract advanceMemoryScanCursor(
     userId: string,
-    messageIds: string[],
-    scannedAt: Date,
+    conversationId: string,
+    throughSequence: number,
   ): Promise<void>;
   abstract applyCandidates(input: ApplyMemoryCandidatesInput): Promise<MemoryRecord[]>;
 }

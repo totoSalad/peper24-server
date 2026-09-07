@@ -29,18 +29,18 @@ describe('MysqlMemoryRepository', () => {
     `, [ userId, `memory-repository-${userId}@example.com`, now, now ]);
     await connection.query(`
       INSERT INTO conversations (
-        id, user_id, topic, status, next_message_sequence, created_at, updated_at
-      ) VALUES (?, ?, 'Memory integration', 'active', 4, ?, ?)
+        id, user_id, topic, status, memory_scanned_through_sequence,
+        next_message_sequence, created_at, updated_at
+      ) VALUES (?, ?, 'Memory integration', 'active', 1, 4, ?, ?)
     `, [ conversationId, userId, now, now ]);
     await connection.query(`
       INSERT INTO messages (
-        id, conversation_id, role, status, content, memory_scanned_at,
-        sequence, created_at, updated_at
-      ) VALUES (?, ?, 'user', 'completed', 'I live in Shanghai.', ?, 1, ?, ?),
-               (?, ?, 'assistant', 'completed', 'Where do you live now?', NULL, 2, ?, ?),
-               (?, ?, 'user', 'completed', 'I moved to Hangzhou.', NULL, 3, ?, ?)
+        id, conversation_id, role, status, content, sequence, created_at, updated_at
+      ) VALUES (?, ?, 'user', 'completed', 'I live in Shanghai.', 1, ?, ?),
+               (?, ?, 'assistant', 'completed', 'Where do you live now?', 2, ?, ?),
+               (?, ?, 'user', 'completed', 'I moved to Hangzhou.', 3, ?, ?)
     `, [
-      oldMessageId, conversationId, now, now, now,
+      oldMessageId, conversationId, now, now,
       assistantMessageId, conversationId, now, now,
       newMessageId, conversationId, now, now,
     ]);
@@ -70,7 +70,7 @@ describe('MysqlMemoryRepository', () => {
     };
   }
 
-  it('loads unscanned user targets with surrounding context and marks only targets scanned', async () => {
+  it('loads targets after the conversation cursor and advances it after processing', async () => {
     const groups = await repository.loadPendingMemoryGroups({
       userId,
       minimumMessages: 1, maximumMessagesPerGroup: 20, maximumGroups: 20,
@@ -83,18 +83,17 @@ describe('MysqlMemoryRepository', () => {
       oldMessageId, assistantMessageId, newMessageId,
     ]);
 
-    await repository.markMessagesScanned(userId, [ newMessageId ], new Date(now.getTime() + 3_000));
+    await repository.advanceMemoryScanCursor(userId, conversationId, 3);
     const remaining = await repository.loadPendingMemoryGroups({
       userId,
       minimumMessages: 1, maximumMessagesPerGroup: 20, maximumGroups: 20,
     });
     assert.equal(remaining.some(group => group.targetMessages.some(item => item.id === newMessageId)), false);
     const [ rows ] = await connection.query<mysql.RowDataPacket[]>(
-      'SELECT id, memory_scanned_at FROM messages WHERE id IN (?, ?) ORDER BY id',
-      [ assistantMessageId, newMessageId ],
+      'SELECT memory_scanned_through_sequence FROM conversations WHERE id = ?',
+      [ conversationId ],
     );
-    assert.equal(rows.find(row => row.id === assistantMessageId)?.memory_scanned_at, null);
-    assert.ok(rows.find(row => row.id === newMessageId)?.memory_scanned_at);
+    assert.equal(Number(rows[0].memory_scanned_through_sequence), 3);
   });
 
   it('requires ten messages per conversation and returns only the earliest twenty', async () => {
@@ -110,9 +109,8 @@ describe('MysqlMemoryRepository', () => {
       for (let index = 0; index < count; index++) {
         await connection.query(`
           INSERT INTO messages (
-            id, conversation_id, role, status, content, memory_scanned_at,
-            sequence, created_at, updated_at
-          ) VALUES (?, ?, 'user', 'completed', ?, NULL, ?, ?, ?)
+            id, conversation_id, role, status, content, sequence, created_at, updated_at
+          ) VALUES (?, ?, 'user', 'completed', ?, ?, ?, ?)
         `, [ ulid(), conversation, `${prefix}-${index + 1}`, index + 1,
           new Date(now.getTime() + index), now ]);
       }

@@ -15,18 +15,9 @@ export interface VocabularyInfo {
 export interface VocabularyRecord extends VocabularyInfo {
   id: string;
   userId: string;
-  originalExpression: string;
   lastEncounteredAt: Date;
   createdAt: Date;
   updatedAt: Date;
-}
-
-export interface VocabularyContextRecord {
-  id: string;
-  vocabularyId: string;
-  messageId: string;
-  sentence: string;
-  createdAt: Date;
 }
 
 export interface SourceMessage {
@@ -53,7 +44,6 @@ export interface ReviewOutcome extends ReviewStateRecord {
 
 export interface SaveVocabularyInput {
   vocabulary: VocabularyRecord;
-  context: VocabularyContextRecord;
   initialReviewState: ReviewStateRecord;
 }
 
