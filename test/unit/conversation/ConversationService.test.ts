@@ -384,6 +384,41 @@ describe('ConversationService', () => {
     );
   });
 
+  it('persists and emits duplicate grammar details once without changing occurrence counts', async () => {
+    const { ai, repository, service } = setup();
+    await service.createConversation('01USER', { topic: 'work' });
+    const correction = {
+      errorType: 'article' as const,
+      original: 'I bought book.',
+      corrected: 'I bought a book.',
+      note: 'Use an article.',
+    };
+    ai.grammarAnalysis = {
+      explicitGrammarQuestion: false,
+      errors: [ correction, { ...correction, original: ' I bought book. ' }],
+    };
+
+    const first = await collect(service.streamMessage('01USER', '01CONVERSATION', {
+      content: 'I bought book.',
+      clientRequestId: 'duplicate-grammar-1',
+    }));
+    const storedFirstOccurrence = [ ...repository.grammarOccurrences.values() ][0];
+    const second = await collect(service.streamMessage('01USER', '01CONVERSATION', {
+      content: 'She bought book.',
+      clientRequestId: 'duplicate-grammar-2',
+    }));
+
+    assert.equal(first.some(event => event.type === 'correction.ready'), false);
+    assert.deepEqual(storedFirstOccurrence.details, [ correction ]);
+    assert.equal(repository.grammarPatterns.get('article')?.count, 2);
+    const emitted = second.filter(event => event.type === 'correction.ready');
+    assert.equal(emitted.length, 1);
+    assert.deepEqual(
+      emitted.map(event => event.type === 'correction.ready' && event.correction),
+      [ correction ],
+    );
+  });
+
   it('replays stored corrections without analyzing or counting a duplicate request', async () => {
     const { ai, service } = setup();
     await service.createConversation('01USER', { topic: 'work' });
