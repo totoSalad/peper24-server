@@ -58,23 +58,30 @@ GrammarService.prepare(analysis)
 ├─ 1. 如果是显性语法提问 → 跳过 (return [])
 │      (用户问的就是语法规则,不需要纠正)
 │
-├─ 2. 去重归一化
+├─ 2. 最多检查前 8 个错误
+│     errors.slice(0, 8)
+│
+├─ 3. 校验并归一化
 │     normalize(correction):
 │     ├─ trim() original / corrected / note
 │     ├─ original === corrected → 丢弃
 │     ├─ 任一为空 → 丢弃
 │     └─ 截断: original≤300, corrected≤300, note≤200
 │
-├─ 3. 最多取前 8 个错误
-│     errors.slice(0, 8)
+├─ 4. 去除归一化后的重复项
+│     errorType / original / corrected / note 四个字段全部相同
+│     → 仅保留第一次出现的项
 │
-├─ 4. 按 errorType 分组
+├─ 5. 按 errorType 分组
 │     Map<GrammarErrorType, Correction[]>
 │
-└─ 5. 排序返回
+└─ 6. 排序返回
       按 errorType 字母序排列
+      同一类型内不同纠正保持首次出现顺序
       → GrammarOccurrenceGroup[]
 ```
+
+重复判断只使用上述现有归一化结果，不转换大小写、不做 Unicode 规范化，也不合并内部空白。任一字段不同（包括 `errorType`）都保留为独立纠正。
 
 ## 纠正触发机制 (在 MysqlConversationRepository 中)
 

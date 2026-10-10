@@ -18,6 +18,8 @@ logs/
 .env
 .env.*
 .eslintcache
+/typings/app/middleware/index.d.ts
+/typings/app/model/index.d.ts
 
 # Private keys, certificates, credentials, and local database exports
 *.pem
