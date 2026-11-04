@@ -16,6 +16,14 @@ import {
 import { InMemoryVocabularyRepository } from '../../support/fake/VocabularyFakes';
 import { MemoryService } from '../../../app/module/memory/service/MemoryService';
 import { InMemoryMemoryRepository } from '../../support/fake/MemoryFakes';
+import { SpeechService } from '../../../app/module/speech/service/SpeechService';
+import {
+  FakeObjectStorage,
+  FakeSpeechRecognitionProvider,
+  InMemorySpeechRepository,
+  SpeechFakeClock,
+  SpeechFixedIdGenerator,
+} from '../../support/fake/SpeechFakes';
 
 async function collect<T>(iterable: AsyncIterable<T>): Promise<T[]> {
   const values: T[] = [];
@@ -76,6 +84,19 @@ describe('ConversationService', () => {
     const memory = new MemoryService(
       memoryRepository, new FixedIdGenerator([]), new FakeClock(now),
     );
+    const speechRepository = new InMemorySpeechRepository();
+    const speechStorage = new FakeObjectStorage();
+    const speechRecognition = new FakeSpeechRecognitionProvider();
+    const speechClock = new SpeechFakeClock(now);
+    const speech = new SpeechService(
+      speechRepository,
+      speechStorage,
+      speechRecognition,
+      new SpeechFixedIdGenerator([ '01RECORDING' ]),
+      speechClock,
+    );
+    repository.bindVoiceRecording = async (recordingId, messageId) => speechRepository
+      .attachRecording('01USER', recordingId, messageId, speechClock.now());
     const service = new ConversationService(
       repository,
       ai,
@@ -93,9 +114,13 @@ describe('ConversationService', () => {
       new GrammarService(),
       vocabulary,
       memory,
+      speech,
       logger,
     );
-    return { repository, vocabularyRepository, memoryRepository, ai, service };
+    return {
+      repository, vocabularyRepository, memoryRepository, ai, service,
+      speech, speechRepository, speechStorage, speechClock,
+    };
   }
 
   it('creates a conversation with an AI welcome message and the pool scene', async () => {
@@ -161,6 +186,72 @@ describe('ConversationService', () => {
       inputTokens: 3,
       outputTokens: 4,
     });
+  });
+
+  it('uses the completed server transcript as voice-message content and binds it atomically', async () => {
+    const context = setup();
+    await context.service.createConversation('01USER', { topic: 'restaurant' });
+    const upload = await context.speech.createVoiceUpload('01USER', {
+      contentType: 'audio/webm', sizeBytes: 1024, extension: 'webm',
+    });
+    const objectKey = context.speechRepository.recordings.get(upload.recordingId)?.objectKey;
+    assert.ok(objectKey);
+    context.speechStorage.objects.set(objectKey, {
+      sizeBytes: 1024, contentType: 'audio/webm',
+    });
+    await context.speech.startTranscription('01USER', upload.recordingId, 900);
+
+    const events = await collect(context.service.streamMessage('01USER', '01CONVERSATION', {
+      voiceRecordingId: upload.recordingId,
+      clientRequestId: 'voice-request-1',
+    }));
+
+    assert.equal(events.at(-1)?.type, 'message.done');
+    assert.equal(context.ai.chatInputs[0].content, 'Hello there.');
+    const messages = await context.repository.listMessages('01CONVERSATION', '01USER');
+    assert.equal(messages?.find(message => message.role === 'user')?.content, 'Hello there.');
+    assert.equal(context.repository.voiceBindings.get(upload.recordingId), '01USERMESSAGE');
+    assert.equal(context.speechRepository.recordings.get(upload.recordingId)?.messageId,
+      '01USERMESSAGE');
+  });
+
+  it('rejects mixed text and voice input instead of trusting client-supplied content', async () => {
+    const { service } = setup();
+    await service.createConversation('01USER', { topic: 'restaurant' });
+
+    await assert.rejects(collect(service.streamMessage('01USER', '01CONVERSATION', {
+      content: 'forged transcript',
+      voiceRecordingId: '01RECORDING',
+      clientRequestId: 'voice-mixed',
+    })), (error: unknown) => error instanceof AppError && error.code === 'INVALID_MESSAGE');
+  });
+
+  it('resumes an interrupted voice exchange from persisted content after the audio expires', async () => {
+    const context = setup();
+    await context.service.createConversation('01USER', { topic: 'restaurant' });
+    const upload = await context.speech.createVoiceUpload('01USER', {
+      contentType: 'audio/webm', sizeBytes: 1024, extension: 'webm',
+    });
+    const objectKey = context.speechRepository.recordings.get(upload.recordingId)?.objectKey;
+    assert.ok(objectKey);
+    context.speechStorage.objects.set(objectKey, {
+      sizeBytes: 1024, contentType: 'audio/webm',
+    });
+    await context.speech.startTranscription('01USER', upload.recordingId, 900);
+    const input = { voiceRecordingId: upload.recordingId, clientRequestId: 'voice-retry' };
+    context.ai.failure = new Error('provider unavailable');
+    assert.equal((await collect(context.service.streamMessage(
+      '01USER', '01CONVERSATION', input,
+    ))).at(-1)?.type, 'error');
+
+    context.ai.failure = undefined;
+    context.speechClock.set(new Date('2026-09-05T01:00:00.000Z'));
+    const retry = await collect(context.service.streamMessage(
+      '01USER', '01CONVERSATION', input,
+    ));
+
+    assert.equal(retry.at(-1)?.type, 'message.done');
+    assert.equal(context.ai.chatInputs.at(-1)?.content, 'Hello there.');
   });
 
   it('includes the latest message in each conversation list item', async () => {

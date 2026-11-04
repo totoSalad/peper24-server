@@ -52,6 +52,7 @@ export interface BeginExchangeInput {
   userId: string;
   userMessage: NewMessageRecord;
   assistantMessage: NewMessageRecord;
+  voiceRecordingId?: string;
 }
 
 export type BeginExchangeResult =

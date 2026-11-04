@@ -5,9 +5,15 @@ export const CreateConversationSchema = z.object({
     .max(120),
 });
 
-export const StreamMessageSchema = z.object({
+const ClientRequestSchema = z.string().trim().min(1)
+  .max(128);
+
+export const StreamMessageSchema = z.union([ z.object({
   content: z.string().trim().min(1)
     .max(4000),
-  clientRequestId: z.string().trim().min(1)
+  clientRequestId: ClientRequestSchema,
+}).strict(), z.object({
+  voiceRecordingId: z.string().trim().min(1)
     .max(128),
-});
+  clientRequestId: ClientRequestSchema,
+}).strict() ]);

@@ -6,7 +6,7 @@
 ┌─────────────────────────────────────────────────────────────────────┐
 │                           HTTP 请求入口                              │
 │  AccountController  ConversationController  TranslationController   │
-│  MemoryController        VocabularyController                        │
+│  MemoryController   Upload/SpeechController    VocabularyController  │
 └──────────────────────────────┬──────────────────────────────────────┘
                                │
                  ┌─────────────┴─────────────┐
@@ -38,6 +38,7 @@
 | Conversation | `app/module/conversation/` | 对话管理：创建会话、流式消息、翻译 |
 | Grammar | `app/module/grammar/` | 语法错误分析、归类、纠正触发 |
 | Memory | `app/module/memory/` | 用户长期记忆：画像、偏好、短期记忆 |
+| Speech | `app/module/speech/` | 用户录音上传、英语 ASR、播放授权与 30 天清理 |
 | Vocabulary | `app/module/vocabulary/` | 生词本管理、AI 词汇增强、间隔复习 (SM-2) |
 
 ## 设计原则
@@ -53,4 +54,5 @@
 - [Conversation 模块](./conversation.md)
 - [Grammar 模块](./grammar.md)
 - [Memory 模块](./memory.md)
+- [Speech 模块](./speech.md)
 - [Vocabulary 模块](./vocabulary.md)

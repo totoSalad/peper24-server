@@ -27,6 +27,7 @@ import type {
 } from '../../../app/module/ai/service/ProductAIService';
 import type { GrammarOccurrenceGroup } from '../../../app/module/grammar/service/GrammarPorts';
 import { DevelopmentProductAIService } from './DevelopmentProductAIService';
+import { AppError } from '../../../app/module/system/error/AppError';
 
 export class InMemoryConversationRepository implements ConversationRepository {
   readonly conversations: ConversationRecord[] = [];
@@ -35,6 +36,8 @@ export class InMemoryConversationRepository implements ConversationRepository {
   readonly dailyChatTokens = new Map<string, number>();
   readonly grammarPatterns = new Map<GrammarErrorType, { count: number; corrected: boolean }>();
   readonly grammarOccurrences = new Map<string, GrammarOccurrenceGroup>();
+  readonly voiceBindings = new Map<string, string>();
+  bindVoiceRecording?: (recordingId: string, messageId: string) => Promise<boolean>;
 
   async create(input: CreateConversationInput): Promise<ConversationRecord> {
     this.conversations.push(input.conversation);
@@ -133,6 +136,15 @@ export class InMemoryConversationRepository implements ConversationRepository {
     const next = this.conversations[conversationIndex].nextMessageSequence;
     const userMessage = { ...input.userMessage, sequence: next };
     const assistantMessage = { ...input.assistantMessage, sequence: next + 1 };
+    if (input.voiceRecordingId) {
+      const bound = this.bindVoiceRecording
+        ? await this.bindVoiceRecording(input.voiceRecordingId, userMessage.id)
+        : !this.voiceBindings.has(input.voiceRecordingId);
+      if (!bound) {
+        throw new AppError('VOICE_RECORDING_ALREADY_USED', '该录音已经发送', 409);
+      }
+      this.voiceBindings.set(input.voiceRecordingId, userMessage.id);
+    }
     this.conversations[conversationIndex] = {
       ...this.conversations[conversationIndex],
       nextMessageSequence: next + 2,

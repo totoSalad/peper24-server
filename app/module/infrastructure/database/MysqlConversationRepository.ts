@@ -178,8 +178,30 @@ export class MysqlConversationRepository extends ConversationRepository {
         `, [ input.userMessage.conversationId, input.userId ]);
         if (!rows[0]) throw new AppError('CONVERSATION_NOT_FOUND', '会话不存在', 404);
         const next = Number(rows[0].next_message_sequence);
-        const userMessage: MessageRecord = { ...input.userMessage, sequence: next };
+        let userMessage: MessageRecord = { ...input.userMessage, sequence: next };
         const assistantMessage: MessageRecord = { ...input.assistantMessage, sequence: next + 1 };
+        if (input.voiceRecordingId) {
+          const recordings = await this.query<Array<Record<string, unknown>>>(connection, `
+            SELECT message_id, status, transcript, expires_at, deleted_at
+            FROM voice_recordings
+            WHERE id = ? AND user_id = ?
+            FOR UPDATE
+          `, [ input.voiceRecordingId, input.userId ]);
+          const recording = recordings[0];
+          if (!recording) {
+            throw new AppError('VOICE_RECORDING_NOT_FOUND', '录音不存在', 404);
+          }
+          if (recording.deleted_at || new Date(String(recording.expires_at)) <= input.userMessage.createdAt) {
+            throw new AppError('VOICE_RECORDING_EXPIRED', '录音已经过期', 410);
+          }
+          if (recording.status !== 'completed' || !String(recording.transcript ?? '').trim()) {
+            throw new AppError('TRANSCRIPTION_NOT_COMPLETED', '录音尚未完成识别', 409);
+          }
+          if (recording.message_id && recording.message_id !== userMessage.id) {
+            throw new AppError('VOICE_RECORDING_ALREADY_USED', '该录音已经发送', 409);
+          }
+          userMessage = { ...userMessage, content: String(recording.transcript) };
+        }
         await this.query(connection, `
           UPDATE conversations
           SET next_message_sequence = ?
@@ -187,6 +209,13 @@ export class MysqlConversationRepository extends ConversationRepository {
         `, [ next + 2, input.userMessage.conversationId, input.userId ]);
         await Message.create(userMessage, { connection });
         await Message.create(assistantMessage, { connection });
+        if (input.voiceRecordingId) {
+          await this.query(connection, `
+            UPDATE voice_recordings
+            SET message_id = ?, updated_at = ?
+            WHERE id = ? AND user_id = ?
+          `, [ userMessage.id, userMessage.updatedAt, input.voiceRecordingId, input.userId ]);
+        }
         created = { created: true, userMessage, assistantMessage };
       });
     } catch (error) {

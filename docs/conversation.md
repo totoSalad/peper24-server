@@ -28,7 +28,7 @@ conversation/
 | POST | `/api/v1/conversations` | 创建新会话（含 AI 欢迎语） |
 | GET | `/api/v1/conversations` | 获取会话列表 |
 | GET | `/api/v1/conversations/:id/messages` | 获取某会话的消息列表 |
-| POST | `/api/v1/conversations/:id/messages/stream` | **SSE 流式发送消息** |
+| POST | `/api/v1/conversations/:id/messages/stream` | **SSE 流式发送文本或已识别语音消息** |
 | POST | `/api/v1/messages/:id/translation` | 翻译消息 |
 
 ## 数据模型
@@ -57,17 +57,19 @@ ConversationRecord                    MessageRecord
 POST /api/v1/conversations/:id/messages/stream
 │
 ├─ 1. 鉴权 ──► AccountService.getCurrentUser()
-├─ 2. 校验 ──► Zod: content(1~4000), clientRequestId(1~128)
+├─ 2. 校验 ──► Zod: content 与 voiceRecordingId 二选一
 ├─ 3. 会话校验 ──► 会话存在 & 属于当前用户
-├─ 4. beginExchange() ──── 幂等性屏障 ──────┐
+├─ 4. 语音解析 ──► SpeechService 读取已完成的服务端 transcript
+├─ 5. beginExchange() ──── 幂等性与事务屏障 ┐
 │     │                                       │
 │     ├── 锁定 conversation，连续分配 user/assistant sequence
 │     ├── 新请求 (created: true) → 继续       │
 │     └── 重复请求 (created: false)           │
 │           ├── 已完成 → replay() 返回缓存     │
 │           └── 中断过 → resume 重新生成       │
+│     └── 语音消息在同一事务内绑定 voice_recordings.message_id
 │                                              │
-├─ 5. 并行启动 ───────────────────────────────┘
+├─ 6. 并行启动 ───────────────────────────────┘
 │     ├── ai.chat()                  (主流程,流式)
 │     ├── ai.analyzeGrammar()        (并行,catch兜底)
 │     └── saveVocabularyInBackground (后台执行,失败不阻塞 chat)

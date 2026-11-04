@@ -4,7 +4,7 @@
 > 产品依据：Peper24 配套产品设计与技术设计文档  
 > 原则：优先完成可上线的模块化单体，不为未验证的规模提前引入微服务、消息中间件、向量数据库或 Kubernetes。
 
-当前落地进度：System、Infrastructure、Account、Conversation、文本 AI、Grammar、Vocabulary / Review、Translation 和 Memory 业务垂直切片已经实现。Conversation 已具备 MySQL 消息持久化、POST SSE、自有事件协议、客户端请求幂等和中断恢复；Translation 已支持权限过滤、结构化输出、数据库缓存和并发合并；Memory 已包含结构化提取、来源校验、合并/替换、过期过滤、删除墓碑、变更日志、Prompt 注入和用户管理 API，待 Worker 切片接入静默会话调度。
+当前落地进度：System、Infrastructure、Account、Conversation、文本 AI、Grammar、Vocabulary / Review、Speech、Translation 和 Memory 业务垂直切片已经实现。Conversation 已具备 MySQL 消息持久化、POST SSE、自有事件协议、客户端请求幂等和中断恢复；Speech 已提供私有 OSS 直传、阿里云异步英语 ASR、语音消息原子绑定、短时播放授权和 30 天可重试清理；Agent 消息朗读仍由浏览器本地 TTS 完成。
 
 ## 1. 一期目标与边界
 
@@ -49,8 +49,8 @@ Egg.js + TEGG
     ├── memory：记忆提取、冲突、过期和用户管理
     └── ai：ProductAIService、Prompt、模型 Provider
 
-基础资源：MySQL + Redis
-外部服务：DeepSeek 或阿里云百炼
+基础资源：MySQL + Redis + 私有 OSS
+外部服务：DeepSeek 或阿里云百炼（文本与异步 ASR）
 ```
 
 服务端保持模块化单体。模块之间通过公开 Service 或明确的接口协作，不通过 HTTP/RPC 在同一进程内互相调用。
@@ -78,6 +78,7 @@ app/
     ├── conversation/
     ├── vocabulary/
     ├── memory/
+    ├── speech/
     ├── ai/
     │   ├── service/
     │   ├── provider/
@@ -85,7 +86,8 @@ app/
     │   └── schema/
     └── infrastructure/
         ├── database/
-        └── redis/
+        ├── redis/
+        └── oss/
 
 database/
 └── migrations/
@@ -103,7 +105,7 @@ test/
 - `controller`：协议转换、身份上下文、状态码和响应，不直接访问数据库；
 - `service`：业务规则与用例编排，是单元测试的主要对象；
 - `schema`：Zod 请求、响应和结构化 AI 输出 Schema，只做结构与格式校验；
-- `infrastructure`：MySQL、Redis 的连接、Repository 和技术实现；
+- `infrastructure`：MySQL、Redis、OSS 的连接、Repository 和技术实现；
 - `ai/provider`：AI SDK 和厂商类型的隔离层；
 - `ai/prompt`：版本化 Prompt 模板；
 - `database/migrations`：唯一允许变更生产数据库结构的入口。
@@ -113,10 +115,11 @@ test/
 ```text
 middleware -> controller -> service -> model / infrastructure interface
 conversation / vocabulary / memory -> ProductAIService interface
+conversation -> SpeechService -> SpeechRepository / ObjectStorage / SpeechRecognitionProvider
 ProductAIService -> provider -> Vercel AI SDK / vendor API
 ```
 
-Service 不写死 Redis、邮件或 AI 实现。外部能力使用可注入的抽象类作为运行时 DI Token，测试时替换为 Fake。
+Service 不写死 Redis、OSS、邮件或 AI 实现。外部能力使用可注入的抽象类作为运行时 DI Token，测试时替换为 Fake。
 
 ## 5. TDD 开发规则
 
@@ -310,7 +313,24 @@ GET /api/v1/learning-summaries/:date
 
 `(user_id, summary_date)` 唯一。`source_version` 是指标快照的 SHA-256；源数据未变化时不重复调用 AI。今日接口会按需生成，Worker 每 20 分钟刷新最近两天有活动的用户，并在进入次日后固化历史小结。AI 失败时使用确定性模板降级。所有日期边界先转换为 UTC 查询区间，数据库时间仍统一存 UTC。
 
-### 6.7 AI
+### 6.7 Speech
+
+```text
+POST /api/v1/uploads/sign
+POST /api/v1/speech/transcriptions
+GET  /api/v1/speech/transcriptions/:recordingId
+GET  /api/v1/messages/:messageId/voice-recording
+```
+
+- 浏览器把 WebM/Opus 或 MP4 直传私有 OSS，单条最多 60 秒、10 MB；
+- 异步 ASR 固定英语提示，模型由 `DASHSCOPE_ASR_MODEL` 配置，默认 `paraformer-v2`；
+- 识别成功后展示不可编辑 transcript，用户确认才以 `{ voiceRecordingId, clientRequestId }` 发送；
+- Message `content` 只复制服务端 transcript，消息创建与录音绑定在同一事务完成；
+- 原音从创建起保留 30 天，播放时校验当前用户归属并签发 10 分钟 URL；
+- 清理先删除 OSS 对象再标记数据库，失败记录保留供下一轮重试；
+- Agent 回复继续使用浏览器本地 TTS，不恢复服务端合成和朗读缓存。
+
+### 6.8 AI
 
 业务模块只依赖：
 
@@ -370,7 +390,8 @@ Prompt 固定按以下顺序组装：
 | `vocabularies` | 生词主记录（已实现） |
 | `review_states`、`review_logs` | SM-2 和答题依据（已实现） |
 | `memories`、`memory_sources`、`memory_change_logs` | 记忆原文、习惯/事实总结及变更审计 |
-| `voice_recordings`、`speech_audio_assets`、`message_audios` | 已下线语音功能的历史表，仅保留数据兼容，不再由运行时代码访问 |
+| `voice_recordings` | 用户原音、识别状态、服务端 transcript、消息绑定和 30 天到期状态 |
+| `speech_audio_assets`、`message_audios` | 历史服务端 TTS 兼容表，运行时代码不访问 |
 | `background_jobs` | 记忆与清理任务 |
 
 主键使用应用生成的 ULID 字符串，时间统一存 UTC `DATETIME(3)`。
@@ -398,6 +419,8 @@ MYSQL_HOST MYSQL_PORT MYSQL_DATABASE MYSQL_USER MYSQL_PASSWORD
 REDIS_HOST REDIS_PORT REDIS_PASSWORD
 AI_TEXT_PROVIDER
 DASHSCOPE_API_KEY BAILIAN_MODEL BAILIAN_TRANSLATION_MODEL BAILIAN_BASE_URL
+DASHSCOPE_ASR_MODEL DASHSCOPE_BASE_URL
+OSS_REGION OSS_BUCKET OSS_ACCESS_KEY_ID OSS_ACCESS_KEY_SECRET OSS_ENDPOINT
 DEEPSEEK_API_KEY DEEPSEEK_MODEL DEEPSEEK_BASE_URL
 DAILY_CHAT_TOKEN_LIMIT
 DIRECTMAIL_*
@@ -460,8 +483,9 @@ API 与 Worker 使用同一镜像。部署时先执行 Migration，再替换 API
 5. AI：DeepSeek/百炼可配置 Provider、分层 Prompt、真实文字聊天和用量记录（已完成）；
 6. Grammar：并行分析、固定分类、第二次纠正和多纠正重放（已完成）；
 7. Vocabulary：收藏、词义补全、工具调用、复习和 SM-2（已完成）；
-8. Memory：提取、冲突、过期、Prompt 注入和用户管理（业务切片已完成）；
-9. Learning Summary：上海自然日聚合、结构化 AI 小结、今日与历史 API（已完成）；
-10. Worker、限流、监控、备份和部署。
+8. Speech：OSS 直传、异步 ASR、语音消息原子绑定和 30 天清理（已完成）；
+9. Memory：提取、冲突、过期、Prompt 注入和用户管理（业务切片已完成）；
+10. Learning Summary：上海自然日聚合、结构化 AI 小结、今日与历史 API（已完成）；
+11. Worker、限流、监控、备份和部署。
 
 每个步骤都应形成可运行、可测试、可独立验收的垂直切片。

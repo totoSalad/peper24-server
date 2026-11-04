@@ -68,6 +68,9 @@ openssl rand -hex 32
 - `AI_TEXT_PROVIDER` 明确设为 `deepseek` 或 `bailian`；
 - `DASHSCOPE_API_KEY` 必须配置，翻译固定使用百炼 `qwen3.7-flash`；如果其他 AI 能力选择
   DeepSeek，还需配置新建的 `DEEPSEEK_API_KEY`。
+- 语音输入还需配置 `DASHSCOPE_ASR_MODEL`（默认 `paraformer-v2`）、私有 Bucket 的
+  `OSS_REGION`、`OSS_BUCKET`、`OSS_ACCESS_KEY_ID`、`OSS_ACCESS_KEY_SECRET`；自定义域名时再配置
+  `OSS_ENDPOINT`。Bucket 不得开放公共读写，上传和播放只使用 HTTPS 短时签名。
 
 密码建议只使用字母和数字的长随机字符串，避免 Compose 对 `$` 等字符做变量展开。
 
