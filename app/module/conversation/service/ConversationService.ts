@@ -216,9 +216,10 @@ export class ConversationService {
       ? history.find(message => message.role === 'user'
         && message.clientRequestId === clientRequestId)
       : undefined;
-    const content = persistedUserMessage?.content ?? (voiceRecordingId
-      ? (await this.speech.prepareVoiceMessage(userId, voiceRecordingId)).transcript
-      : textContent as string);
+    const preparedVoice = voiceRecordingId && !persistedUserMessage
+      ? await this.speech.prepareVoiceMessage(userId, voiceRecordingId)
+      : undefined;
+    const content = persistedUserMessage?.content ?? preparedVoice?.transcript ?? textContent as string;
     const userMessage: NewMessageRecord = {
       id: this.ids.next(),
       conversationId,
@@ -243,7 +244,14 @@ export class ConversationService {
       userId,
       userMessage,
       assistantMessage,
-      ...(voiceRecordingId ? { voiceRecordingId } : {}),
+      ...(preparedVoice ? {
+        voiceBinding: {
+          recordingId: preparedVoice.recordingId,
+          bindToMessage: (transaction: unknown, messageId: string) => this.speech.bindVoiceMessage(
+            transaction, userId, preparedVoice.recordingId, messageId,
+          ),
+        },
+      } : {}),
     });
     if (!exchange.created) {
       yield* this.replay(exchange.assistantMessage);

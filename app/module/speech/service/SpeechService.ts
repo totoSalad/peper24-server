@@ -5,6 +5,7 @@ import {
   ObjectStorage,
   SpeechRecognitionProvider,
   SpeechRepository,
+  type SpeechTransaction,
   type VoiceContentType,
   type VoiceRecordingRecord,
   VOICE_CONTENT_TYPES,
@@ -16,6 +17,7 @@ const RECORDING_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
 const UPLOAD_URL_SECONDS = 5 * 60;
 const DOWNLOAD_URL_SECONDS = 10 * 60;
 const CLEANUP_BATCH_SIZE = 100;
+const SUBMISSION_STALE_MS = 60_000;
 
 const extensionByType: Record<VoiceContentType, 'webm' | 'mp4'> = {
   'audio/webm': 'webm',
@@ -94,7 +96,9 @@ export class SpeechService {
     let recording = await this.requireActiveRecording(userId, recordingId);
     if (recording.status === 'completed') return this.toTranscription(recording);
     if (recording.status === 'processing') return this.refreshTranscription(recording);
-    if (recording.status === 'submitting') {
+    const now = this.clock.now();
+    const staleBefore = new Date(now.getTime() - SUBMISSION_STALE_MS);
+    if (recording.status === 'submitting' && recording.updatedAt > staleBefore) {
       return { status: 'processing' as const, retryAfterMs: 1000 };
     }
     let metadata;
@@ -108,18 +112,20 @@ export class SpeechService {
       throw new AppError('AUDIO_UPLOAD_MISMATCH', '上传音频与签名信息不一致');
     }
     const claim = await this.repository.claimTranscription(
-      userId, recordingId, durationMs, this.clock.now(),
+      userId, recordingId, durationMs, now, staleBefore,
     );
     if (!claim.claimed) return this.currentTranscription(claim.recording);
-    const audioUrl = await this.storage.createDownloadUrl(recording.objectKey, DOWNLOAD_URL_SECONDS);
     try {
+      const audioUrl = await this.storage.createDownloadUrl(
+        recording.objectKey, DOWNLOAD_URL_SECONDS,
+      );
       const submitted = await this.recognition.submit({ audioUrl });
       recording = await this.repository.markTranscriptionSubmitted(
         userId, recordingId, submitted.taskId, durationMs, this.clock.now(),
       );
     } catch {
       await this.repository.failTranscription(
-        userId, recordingId, 'SPEECH_PROVIDER_UNAVAILABLE', this.clock.now(),
+        userId, recordingId, 'SPEECH_PROVIDER_FAILED', this.clock.now(),
       );
       throw new AppError('SPEECH_PROVIDER_FAILED', '语音识别服务请求失败', 502);
     }
@@ -133,15 +139,25 @@ export class SpeechService {
 
   async prepareVoiceMessage(userId: string, recordingId: string) {
     const recording = await this.requireActiveRecording(userId, recordingId);
-    if (recording.status !== 'completed' || !recording.transcript?.trim()) {
-      throw new AppError('TRANSCRIPTION_NOT_COMPLETED', '录音尚未完成识别', 409);
-    }
+    this.assertVoiceMessageReady(recording);
     return { recordingId: recording.id, transcript: recording.transcript };
   }
 
-  async attachRecording(userId: string, recordingId: string, messageId: string): Promise<void> {
-    await this.prepareVoiceMessage(userId, recordingId);
-    if (!await this.repository.attachRecording(userId, recordingId, messageId, this.clock.now())) {
+  async bindVoiceMessage(
+    transaction: SpeechTransaction,
+    userId: string,
+    recordingId: string,
+    messageId: string,
+  ): Promise<void> {
+    const recording = await this.repository.findRecordingForUpdate(
+      transaction, userId, recordingId,
+    );
+    if (!recording) throw new AppError('VOICE_RECORDING_NOT_FOUND', '录音不存在', 404);
+    this.assertVoiceMessageReady(recording, messageId);
+    if (recording.messageId === messageId) return;
+    if (!await this.repository.bindRecordingToMessage(
+      transaction, recordingId, messageId, this.clock.now(),
+    )) {
       throw new AppError('VOICE_RECORDING_ALREADY_USED', '该录音已经发送', 409);
     }
   }
@@ -199,6 +215,19 @@ export class SpeechService {
       return { status: 'failed' as const, errorCode: recording.errorCode ?? 'SPEECH_PROVIDER_FAILED' };
     }
     if (recording.status === 'submitting') {
+      const staleBefore = new Date(this.clock.now().getTime() - SUBMISSION_STALE_MS);
+      if (recording.updatedAt <= staleBefore) {
+        const afterFailure = await this.repository.failStaleSubmission(
+          recording.userId,
+          recording.id,
+          staleBefore,
+          'SPEECH_PROVIDER_FAILED',
+          this.clock.now(),
+        );
+        if (afterFailure.status !== 'submitting') {
+          return this.currentTranscription(afterFailure);
+        }
+      }
       return { status: 'processing' as const, retryAfterMs: 1000 };
     }
     if (recording.status !== 'processing') {
@@ -217,6 +246,19 @@ export class SpeechService {
   private assertNotExpired(recording: VoiceRecordingRecord): void {
     if (this.isExpired(recording)) {
       throw new AppError('VOICE_RECORDING_EXPIRED', '录音已经过期', 410);
+    }
+  }
+
+  private assertVoiceMessageReady(
+    recording: VoiceRecordingRecord,
+    expectedMessageId?: string,
+  ): asserts recording is VoiceRecordingRecord & { transcript: string } {
+    this.assertNotExpired(recording);
+    if (recording.status !== 'completed' || !recording.transcript?.trim()) {
+      throw new AppError('TRANSCRIPTION_NOT_COMPLETED', '录音尚未完成识别', 409);
+    }
+    if (recording.messageId && recording.messageId !== expectedMessageId) {
+      throw new AppError('VOICE_RECORDING_ALREADY_USED', '该录音已经发送', 409);
     }
   }
 

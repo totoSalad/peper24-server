@@ -1,12 +1,21 @@
 import { AccessLevel, Inject, SingletonProto } from '@eggjs/tegg';
 import {
   SpeechRepository,
+  type SpeechTransaction,
   type VoiceContentType,
   type VoiceRecordingRecord,
 } from '../../speech/service/SpeechPorts';
 import { DatabaseService } from './DatabaseService';
 
 type Row = Record<string, unknown>;
+type QueryValue = string | number | Date | null;
+type Connection = {
+  query(
+    sql: string,
+    values: QueryValue[],
+    callback: (error: Error | null, result: unknown) => void,
+  ): void;
+};
 
 function toDate(value: unknown): Date {
   return value instanceof Date ? new Date(value) : new Date(String(value));
@@ -69,15 +78,17 @@ export class MysqlSpeechRepository extends SpeechRepository {
   }
 
   async claimTranscription(
-    userId: string, recordingId: string, durationMs: number, updatedAt: Date,
+    userId: string, recordingId: string, durationMs: number,
+    updatedAt: Date, staleBefore: Date,
   ) {
     const realm = await this.databaseService.getRealm();
     const result = await realm.query(`
       UPDATE voice_recordings SET status = 'submitting', duration_ms = ?,
         provider_task_id = NULL, error_code = NULL, updated_at = ?
-      WHERE id = ? AND user_id = ? AND status IN ('uploading', 'failed')
+      WHERE id = ? AND user_id = ?
+        AND (status IN ('uploading', 'failed') OR (status = 'submitting' AND updated_at <= ?))
         AND expires_at > ? AND deleted_at IS NULL
-    `, [ durationMs, updatedAt, recordingId, userId, updatedAt ]);
+    `, [ durationMs, updatedAt, recordingId, userId, staleBefore, updatedAt ]);
     const recording = await this.findRecording(userId, recordingId);
     if (!recording) throw new Error('recording not found while claiming transcription');
     return { claimed: Number(result.affectedRows ?? 0) === 1, recording };
@@ -119,21 +130,47 @@ export class MysqlSpeechRepository extends SpeechRepository {
     return this.requireRecording(userId, recordingId);
   }
 
-  async attachRecording(
-    userId: string, recordingId: string, messageId: string, updatedAt: Date,
-  ): Promise<boolean> {
+  async failStaleSubmission(
+    userId: string,
+    recordingId: string,
+    staleBefore: Date,
+    errorCode: string,
+    updatedAt: Date,
+  ): Promise<VoiceRecordingRecord> {
     const realm = await this.databaseService.getRealm();
+    await realm.query(`
+      UPDATE voice_recordings SET status = 'failed', error_code = ?, updated_at = ?
+      WHERE id = ? AND user_id = ? AND status = 'submitting' AND updated_at <= ?
+    `, [ errorCode, updatedAt, recordingId, userId, staleBefore ]);
+    return this.requireRecording(userId, recordingId);
+  }
+
+  async findRecordingForUpdate(
+    transaction: SpeechTransaction,
+    userId: string,
+    recordingId: string,
+  ): Promise<VoiceRecordingRecord | null> {
+    const rows = await this.query<Row[]>(transaction as Connection, `
+      SELECT * FROM voice_recordings
+      WHERE id = ? AND user_id = ?
+      FOR UPDATE
+    `, [ recordingId, userId ]);
+    return rows[0] ? this.toRecording(rows[0]) : null;
+  }
+
+  async bindRecordingToMessage(
+    transaction: SpeechTransaction,
+    recordingId: string,
+    messageId: string,
+    updatedAt: Date,
+  ): Promise<boolean> {
     try {
-      const result = await realm.query(`
+      const result = await this.query<{ affectedRows?: number }>(transaction as Connection, `
         UPDATE voice_recordings
         SET message_id = ?, updated_at = ?
-        WHERE id = ? AND user_id = ? AND status = 'completed'
-          AND expires_at > ? AND deleted_at IS NULL
-          AND (message_id IS NULL OR message_id = ?)
-      `, [ messageId, updatedAt, recordingId, userId, updatedAt, messageId ]);
-      if (Number(result.affectedRows ?? 0) === 1) return true;
-      const recording = await this.findRecording(userId, recordingId);
-      return recording?.messageId === messageId;
+        WHERE id = ? AND message_id IS NULL
+      `, [ messageId, updatedAt, recordingId ]);
+      return Number(result.affectedRows ?? 0) === 1;
     } catch (error) {
       if (this.isDuplicate(error)) return false;
       throw error;
@@ -193,5 +230,11 @@ export class MysqlSpeechRepository extends SpeechRepository {
   private isDuplicate(error: unknown): boolean {
     return typeof error === 'object' && error !== null && 'code' in error
       && error.code === 'ER_DUP_ENTRY';
+  }
+
+  private query<T>(connection: Connection, sql: string, values: QueryValue[]): Promise<T> {
+    return new Promise((resolve, reject) => connection.query(sql, values, (error, result) => {
+      if (error) reject(error); else resolve(result as T);
+    }));
   }
 }

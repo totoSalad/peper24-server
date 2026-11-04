@@ -121,6 +121,44 @@ describe('SpeechService', () => {
     assert.equal(context.recognition.submitCalls, 2);
   });
 
+  it('marks download-signing failures as failed so the same recording can retry', async () => {
+    const context = setup();
+    const { recordingId } = await createUploadedRecording(context);
+    const createDownloadUrl = context.storage.createDownloadUrl.bind(context.storage);
+    context.storage.createDownloadUrl = async () => {
+      throw new Error('temporary signing failure');
+    };
+
+    await assert.rejects(context.service.startTranscription('01USER', recordingId, 900),
+      (error: unknown) => error instanceof AppError && error.code === 'SPEECH_PROVIDER_FAILED');
+    assert.equal(context.repository.recordings.get(recordingId)?.status, 'failed');
+    assert.equal(context.repository.recordings.get(recordingId)?.errorCode,
+      'SPEECH_PROVIDER_FAILED');
+
+    context.storage.createDownloadUrl = createDownloadUrl;
+    assert.equal((await context.service.startTranscription('01USER', recordingId, 900)).status,
+      'completed');
+  });
+
+  it('turns a stale submitting claim into a retryable failure instead of polling forever', async () => {
+    const context = setup();
+    const { recordingId } = await createUploadedRecording(context);
+    const recording = context.repository.recordings.get(recordingId)!;
+    recording.status = 'submitting';
+    recording.updatedAt = now;
+
+    assert.deepEqual(await context.service.getTranscription('01USER', recordingId), {
+      status: 'processing', retryAfterMs: 1000,
+    });
+    context.clock.set(new Date('2026-08-06T01:01:00.000Z'));
+    assert.deepEqual(await context.service.getTranscription('01USER', recordingId), {
+      status: 'failed', errorCode: 'SPEECH_PROVIDER_FAILED',
+    });
+    assert.equal(recording.status, 'failed');
+    assert.equal((await context.service.startTranscription('01USER', recordingId, 900)).status,
+      'completed');
+  });
+
   it('uses only a completed server transcript for a voice message and binds it once', async () => {
     const context = setup();
     const { recordingId } = await createUploadedRecording(context);
@@ -132,9 +170,13 @@ describe('SpeechService', () => {
     assert.deepEqual(await context.service.prepareVoiceMessage('01USER', recordingId), {
       recordingId, transcript: 'Hello there.',
     });
-    await context.service.attachRecording('01USER', recordingId, '01MESSAGE');
-    await context.service.attachRecording('01USER', recordingId, '01MESSAGE');
-    await assert.rejects(context.service.attachRecording('01USER', recordingId, '02MESSAGE'),
+    await context.service.bindVoiceMessage(undefined, '01USER', recordingId, '01MESSAGE');
+    await context.service.bindVoiceMessage(undefined, '01USER', recordingId, '01MESSAGE');
+    await assert.rejects(context.service.prepareVoiceMessage('01USER', recordingId),
+      (error: unknown) => error instanceof AppError
+        && error.code === 'VOICE_RECORDING_ALREADY_USED');
+    await assert.rejects(
+      context.service.bindVoiceMessage(undefined, '01USER', recordingId, '02MESSAGE'),
       (error: unknown) => error instanceof AppError
         && error.code === 'VOICE_RECORDING_ALREADY_USED');
   });
@@ -143,7 +185,7 @@ describe('SpeechService', () => {
     const context = setup();
     const { recordingId } = await createUploadedRecording(context);
     await context.service.startTranscription('01USER', recordingId, 900);
-    await context.service.attachRecording('01USER', recordingId, '01MESSAGE');
+    await context.service.bindVoiceMessage(undefined, '01USER', recordingId, '01MESSAGE');
 
     const playback = await context.service.getMessageVoiceRecording('01USER', '01MESSAGE');
     assert.deepEqual(playback, {
@@ -166,7 +208,7 @@ describe('SpeechService', () => {
     const context = setup();
     const { recordingId } = await createUploadedRecording(context);
     await context.service.startTranscription('01USER', recordingId, 900);
-    await context.service.attachRecording('01USER', recordingId, '01MESSAGE');
+    await context.service.bindVoiceMessage(undefined, '01USER', recordingId, '01MESSAGE');
 
     assert.deepEqual(await context.service.describeMessageRecordings('01USER', [ '01MESSAGE' ]), {
       '01MESSAGE': {

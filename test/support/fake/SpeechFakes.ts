@@ -94,9 +94,13 @@ export class InMemorySpeechRepository implements SpeechRepository {
       .filter(item => item.userId === userId && item.messageId && messageIds.includes(item.messageId))
       .map(item => ({ ...item }));
   }
-  async claimTranscription(userId: string, recordingId: string, durationMs: number, updatedAt: Date) {
+  async claimTranscription(
+    userId: string, recordingId: string, durationMs: number,
+    updatedAt: Date, staleBefore: Date,
+  ) {
     const value = this.requireRecording(userId, recordingId);
-    if (value.status !== 'uploading' && value.status !== 'failed') {
+    if (value.status !== 'uploading' && value.status !== 'failed'
+      && !(value.status === 'submitting' && value.updatedAt <= staleBefore)) {
       return { claimed: false, recording: { ...value } };
     }
     Object.assign(value, {
@@ -130,10 +134,26 @@ export class InMemorySpeechRepository implements SpeechRepository {
     Object.assign(value, { errorCode, status: 'failed', updatedAt });
     return { ...value };
   }
-  async attachRecording(
-    userId: string, recordingId: string, messageId: string, updatedAt: Date,
-  ): Promise<boolean> {
+  async failStaleSubmission(
+    userId: string, recordingId: string, staleBefore: Date,
+    errorCode: string, updatedAt: Date,
+  ) {
     const value = this.requireRecording(userId, recordingId);
+    if (value.status === 'submitting' && value.updatedAt <= staleBefore) {
+      Object.assign(value, { errorCode, status: 'failed', updatedAt });
+    }
+    return { ...value };
+  }
+  async findRecordingForUpdate(
+    _transaction: unknown, userId: string, recordingId: string,
+  ): Promise<VoiceRecordingRecord | null> {
+    return this.findRecording(userId, recordingId);
+  }
+  async bindRecordingToMessage(
+    _transaction: unknown, recordingId: string, messageId: string, updatedAt: Date,
+  ): Promise<boolean> {
+    const value = this.recordings.get(recordingId);
+    if (!value) return false;
     if (value.messageId && value.messageId !== messageId) return false;
     Object.assign(value, { messageId, updatedAt });
     return true;

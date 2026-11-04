@@ -95,8 +95,6 @@ describe('ConversationService', () => {
       new SpeechFixedIdGenerator([ '01RECORDING' ]),
       speechClock,
     );
-    repository.bindVoiceRecording = async (recordingId, messageId) => speechRepository
-      .attachRecording('01USER', recordingId, messageId, speechClock.now());
     const service = new ConversationService(
       repository,
       ai,

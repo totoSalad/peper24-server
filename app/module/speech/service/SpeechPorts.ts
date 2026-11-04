@@ -49,6 +49,8 @@ export interface UploadRequest {
   expiresInSeconds: number;
 }
 
+export type SpeechTransaction = unknown;
+
 export abstract class ObjectStorage {
   abstract createUploadUrl(input: UploadRequest): Promise<SignedUpload>;
   abstract headObject(key: string): Promise<ObjectMetadata>;
@@ -81,6 +83,7 @@ export abstract class SpeechRepository {
     recordingId: string,
     durationMs: number,
     updatedAt: Date,
+    staleBefore: Date,
   ): Promise<{ claimed: boolean; recording: VoiceRecordingRecord }>;
   abstract markTranscriptionSubmitted(
     userId: string,
@@ -102,8 +105,20 @@ export abstract class SpeechRepository {
     errorCode: string,
     updatedAt: Date,
   ): Promise<VoiceRecordingRecord>;
-  abstract attachRecording(
+  abstract failStaleSubmission(
     userId: string,
+    recordingId: string,
+    staleBefore: Date,
+    errorCode: string,
+    updatedAt: Date,
+  ): Promise<VoiceRecordingRecord>;
+  abstract findRecordingForUpdate(
+    transaction: SpeechTransaction,
+    userId: string,
+    recordingId: string,
+  ): Promise<VoiceRecordingRecord | null>;
+  abstract bindRecordingToMessage(
+    transaction: SpeechTransaction,
     recordingId: string,
     messageId: string,
     updatedAt: Date,

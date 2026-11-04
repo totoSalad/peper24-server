@@ -45,6 +45,44 @@ describe('SpeechController', () => {
     }
   });
 
+  async function insertRecording(input: {
+    id: string;
+    status: string;
+    expiresAt: Date;
+    transcript?: string;
+    messageId?: string;
+    updatedAt?: Date;
+  }) {
+    const connection = await mysql.createConnection({
+      host: process.env.MYSQL_HOST ?? '127.0.0.1',
+      port: Number(process.env.MYSQL_PORT ?? 3306),
+      user: process.env.MYSQL_USER ?? 'peper24',
+      password: process.env.MYSQL_PASSWORD ?? 'peper24_dev',
+      database: process.env.MYSQL_DATABASE ?? 'peper24_test',
+    });
+    const now = new Date();
+    try {
+      await connection.query(`
+        INSERT INTO voice_recordings (
+          id, user_id, message_id, oss_key, content_type, size_bytes, duration_ms, status,
+          transcript, expires_at, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, 'audio/webm', 1024, 900, ?, ?, ?, ?, ?)
+      `, [
+        input.id,
+        userId,
+        input.messageId ?? null,
+        `voice-recordings/${userId}/${input.id}.webm`,
+        input.status,
+        input.transcript ?? null,
+        input.expiresAt,
+        now,
+        input.updatedAt ?? now,
+      ]);
+    } finally {
+      await connection.end();
+    }
+  }
+
   it('signs an authenticated browser upload without leaking the private object key', async () => {
     const response = await app.httpRequest().post('/api/v1/uploads/sign')
       .set('Host', 'localhost')
@@ -107,6 +145,72 @@ describe('SpeechController', () => {
     assert.equal(playback.body.error.code, 'VOICE_RECORDING_NOT_FOUND');
   });
 
+  it('returns 202 while processing, 409 before transcription, and 410 for expired playback', async () => {
+    const creation = await app.httpRequest()
+      .post('/api/v1/conversations')
+      .set('Host', 'localhost')
+      .set('Origin', 'http://localhost')
+      .set('Cookie', cookie)
+      .send({ topic: 'restaurant' })
+      .expect(201);
+    const conversationId = creation.body.data.conversation.id as string;
+    const expiredMessageId = ulid();
+    const connection = await mysql.createConnection({
+      host: process.env.MYSQL_HOST ?? '127.0.0.1',
+      port: Number(process.env.MYSQL_PORT ?? 3306),
+      user: process.env.MYSQL_USER ?? 'peper24',
+      password: process.env.MYSQL_PASSWORD ?? 'peper24_dev',
+      database: process.env.MYSQL_DATABASE ?? 'peper24_test',
+    });
+    try {
+      await connection.query(`
+        INSERT INTO messages (
+          id, conversation_id, role, status, content, sequence, created_at, updated_at
+        ) VALUES (?, ?, 'user', 'completed', 'Expired voice.', 2, ?, ?)
+      `, [ expiredMessageId, conversationId, new Date(), new Date() ]);
+    } finally {
+      await connection.end();
+    }
+    const processingId = ulid();
+    const unstartedId = ulid();
+    const expiredId = ulid();
+    await insertRecording({
+      id: processingId,
+      status: 'submitting',
+      expiresAt: new Date(Date.now() + 60_000),
+    });
+    await insertRecording({
+      id: unstartedId,
+      status: 'uploading',
+      expiresAt: new Date(Date.now() + 60_000),
+    });
+    await insertRecording({
+      id: expiredId,
+      status: 'completed',
+      transcript: 'Expired voice.',
+      messageId: expiredMessageId,
+      expiresAt: new Date(Date.now() - 1),
+    });
+
+    const processing = await app.httpRequest()
+      .get(`/api/v1/speech/transcriptions/${processingId}`)
+      .set('Cookie', cookie)
+      .expect(202);
+    assert.equal(processing.body.data.status, 'processing');
+
+    const unstarted = await app.httpRequest()
+      .get(`/api/v1/speech/transcriptions/${unstartedId}`)
+      .set('Cookie', cookie)
+      .expect(409);
+    assert.equal(unstarted.body.error.code, 'TRANSCRIPTION_NOT_STARTED');
+
+    const expired = await app.httpRequest()
+      .get(`/api/v1/messages/${expiredMessageId}/voice-recording`)
+      .set('Cookie', cookie)
+      .expect(410);
+    assert.equal(expired.body.error.code, 'VOICE_RECORDING_EXPIRED');
+  });
+
   it('sends the persisted transcript and returns playable voice metadata in message history', async () => {
     const creation = await app.httpRequest()
       .post('/api/v1/conversations')
@@ -145,6 +249,15 @@ describe('SpeechController', () => {
       .set('Cookie', cookie)
       .send({ voiceRecordingId: recordingId, clientRequestId: 'voice-http-1' })
       .expect(200);
+
+    const reused = await app.httpRequest()
+      .post(`/api/v1/conversations/${conversationId}/messages/stream`)
+      .set('Host', 'localhost')
+      .set('Origin', 'http://localhost')
+      .set('Cookie', cookie)
+      .send({ voiceRecordingId: recordingId, clientRequestId: 'voice-http-2' })
+      .expect(200);
+    assert.match(reused.text, /VOICE_RECORDING_ALREADY_USED/);
 
     const history = await app.httpRequest()
       .get(`/api/v1/conversations/${conversationId}/messages`)
