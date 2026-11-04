@@ -1,6 +1,6 @@
 import { strict as assert } from 'node:assert';
 import { DashScopeSpeechRecognitionProvider } from
-  '../../../app/module/speech/provider/DashScopeSpeechRecognitionProvider';
+  '../../../app/module/ai/provider/DashScopeSpeechRecognitionProvider';
 
 describe('DashScopeSpeechRecognitionProvider', () => {
   const originalFetch = globalThis.fetch;

@@ -75,6 +75,7 @@ describe('SpeechController', () => {
       .expect(401);
     await app.httpRequest().post('/api/v1/uploads/sign')
       .set('Host', 'localhost')
+      .set('Origin', 'https://attacker.example')
       .set('Cookie', cookie)
       .send(valid)
       .expect(403);

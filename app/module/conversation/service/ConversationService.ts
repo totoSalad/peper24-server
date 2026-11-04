@@ -210,11 +210,15 @@ export class ConversationService {
       yield* this.replay(existingAssistant);
       return;
     }
-    const content = voiceRecordingId
-      ? (await this.speech.prepareVoiceMessage(userId, voiceRecordingId)).transcript
-      : textContent as string;
     await this.enforceDailyTokenLimit(userId, now);
     const history = await this.conversations.listMessages(conversationId, userId) ?? [];
+    const persistedUserMessage = existingAssistant?.status === 'interrupted'
+      ? history.find(message => message.role === 'user'
+        && message.clientRequestId === clientRequestId)
+      : undefined;
+    const content = persistedUserMessage?.content ?? (voiceRecordingId
+      ? (await this.speech.prepareVoiceMessage(userId, voiceRecordingId)).transcript
+      : textContent as string);
     const userMessage: NewMessageRecord = {
       id: this.ids.next(),
       conversationId,

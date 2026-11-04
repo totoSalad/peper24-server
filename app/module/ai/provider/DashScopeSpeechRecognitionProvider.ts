@@ -1,6 +1,6 @@
 import { AccessLevel, SingletonProto } from '@eggjs/tegg';
 import { AppError } from '../../system/error/AppError';
-import { SpeechRecognitionProvider } from '../service/SpeechPorts';
+import { SpeechRecognitionProvider } from '../../speech/service/SpeechPorts';
 
 type JsonRecord = Record<string, unknown>;
 
