@@ -9,11 +9,11 @@ Speech 负责用户英语录音的私有 OSS 直传、阿里云异步 ASR、30 �
 | 方法 | 路径 | 说明 |
 |---|---|---|
 | POST | `/api/v1/uploads/sign` | 为 10 MB 以内的 WebM/Opus 或 MP4 创建 5 分钟上传签名 |
-| POST | `/api/v1/speech/transcriptions` | 校验 OSS 对象并提交/刷新异步英语识别 |
-| GET | `/api/v1/speech/transcriptions/:recordingId` | 获取识别状态和不可编辑 transcript |
+| POST | `/api/v1/speech/transcriptions` | 兼容旧客户端：校验 OSS 对象并提交/刷新异步英语识别 |
+| GET | `/api/v1/speech/transcriptions/:recordingId` | 兼容旧客户端：获取识别状态，不返回 transcript |
 | GET | `/api/v1/messages/:messageId/voice-recording` | 校验当前用户归属后签发 10 分钟播放 URL |
 
-Conversation 流式接口接受互斥输入：文本 `{ content, clientRequestId }` 或语音 `{ voiceRecordingId, clientRequestId }`。语音消息正文只取数据库中的 transcript；创建消息和绑定录音在同一 MySQL 事务完成。
+Conversation 流式接口接受互斥输入：文本 `{ content, clientRequestId }` 或语音 `{ voiceRecordingId, durationMs, clientRequestId }`。录音上传完成后，客户端直接提交语音消息；流式接口负责启动并等待 ASR，不返回识别文字供二次确认。语音消息正文只取数据库中的 transcript；创建消息和绑定录音在同一 MySQL 事务完成，历史消息继续通过 `content` 展示识别文字。
 
 ## 状态与保留
 
@@ -25,7 +25,7 @@ uploading -> submitting -> processing -> completed -> expired
                           +---- retry ----> submitting
 ```
 
-- 只有 `completed` 且未到期的录音可以发送或播放。
+- 上传完成且未到期的录音可以直接发送；服务端识别完成后才创建消息。只有 `completed` 的录音可以播放。
 - 同一录音最多绑定一条用户消息；同一 `clientRequestId` 使用 Conversation 幂等重放。
 - 录音从创建起 30 天到期。清理任务先幂等删除 OSS 对象，成功后才标记数据库 `expired/deletedAt`；删除失败保留待重试记录。
 - 到期后消息文字、AI 回复及学习数据继续保留，消息 DTO 返回 `voiceRecording.status = "expired"`。

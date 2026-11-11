@@ -324,7 +324,7 @@ GET  /api/v1/messages/:messageId/voice-recording
 
 - 浏览器把 WebM/Opus 或 MP4 直传私有 OSS，单条最多 60 秒、10 MB；
 - 异步 ASR 固定英语提示，模型由 `DASHSCOPE_ASR_MODEL` 配置，默认 `paraformer-v2`；
-- 识别成功后展示不可编辑 transcript，用户确认才以 `{ voiceRecordingId, clientRequestId }` 发送；
+- 录音上传完成后直接以 `{ voiceRecordingId, durationMs, clientRequestId }` 发送，Conversation 流式接口启动并等待 ASR，不回填 transcript 或等待二次确认；
 - Message `content` 只复制服务端 transcript，消息创建与录音绑定在同一事务完成；
 - 原音从创建起保留 30 天，播放时校验当前用户归属并签发 10 分钟 URL；
 - 清理先删除 OSS 对象再标记数据库，失败记录保留供下一轮重试；

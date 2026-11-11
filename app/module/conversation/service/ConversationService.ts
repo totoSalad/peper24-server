@@ -28,6 +28,7 @@ export interface CreateConversationRequest {
 export interface StreamMessageRequest {
   content?: string;
   voiceRecordingId?: string;
+  durationMs?: number;
   clientRequestId: string;
   signal?: AbortSignal;
 }
@@ -194,6 +195,10 @@ export class ConversationService {
     if (textContent && textContent.length > 4000) {
       throw new AppError('INVALID_MESSAGE', '消息长度必须是 1 到 4000 个字符');
     }
+    if (voiceRecordingId && (!Number.isInteger(input.durationMs)
+      || input.durationMs! < 1 || input.durationMs! > 60_000)) {
+      throw new AppError('INVALID_RECORDING_DURATION', '录音时长必须在 60 秒内');
+    }
     if (!input.clientRequestId.trim() || input.clientRequestId.length > 128) {
       throw new AppError('INVALID_CLIENT_REQUEST_ID', '客户端请求 ID 不正确');
     }
@@ -217,7 +222,9 @@ export class ConversationService {
         && message.clientRequestId === clientRequestId)
       : undefined;
     const preparedVoice = voiceRecordingId && !persistedUserMessage
-      ? await this.speech.prepareVoiceMessage(userId, voiceRecordingId)
+      ? await this.speech.prepareVoiceMessage(
+        userId, voiceRecordingId, input.durationMs!, input.signal,
+      )
       : undefined;
     const content = persistedUserMessage?.content ?? preparedVoice?.transcript ?? textContent as string;
     const userMessage: NewMessageRecord = {

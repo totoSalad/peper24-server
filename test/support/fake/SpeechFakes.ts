@@ -62,6 +62,7 @@ export class FakeSpeechRecognitionProvider implements SpeechRecognitionProvider 
   result: Awaited<ReturnType<SpeechRecognitionProvider['poll']>> = {
     status: 'completed', transcript: 'Hello there.', durationMs: 900,
   };
+  readonly results: Array<Awaited<ReturnType<SpeechRecognitionProvider['poll']>>> = [];
   async submit(input: { audioUrl: string }): Promise<{ taskId: string }> {
     this.submitCalls += 1;
     this.submissions.push(input);
@@ -70,7 +71,7 @@ export class FakeSpeechRecognitionProvider implements SpeechRecognitionProvider 
   }
   async poll() {
     this.pollCalls += 1;
-    return this.result;
+    return this.results.shift() ?? this.result;
   }
 }
 

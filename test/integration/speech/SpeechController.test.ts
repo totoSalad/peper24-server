@@ -247,7 +247,7 @@ describe('SpeechController', () => {
       .set('Host', 'localhost')
       .set('Origin', 'http://localhost')
       .set('Cookie', cookie)
-      .send({ voiceRecordingId: recordingId, clientRequestId: 'voice-http-1' })
+      .send({ voiceRecordingId: recordingId, durationMs: 900, clientRequestId: 'voice-http-1' })
       .expect(200);
 
     const reused = await app.httpRequest()
@@ -255,7 +255,7 @@ describe('SpeechController', () => {
       .set('Host', 'localhost')
       .set('Origin', 'http://localhost')
       .set('Cookie', cookie)
-      .send({ voiceRecordingId: recordingId, clientRequestId: 'voice-http-2' })
+      .send({ voiceRecordingId: recordingId, durationMs: 900, clientRequestId: 'voice-http-2' })
       .expect(200);
     assert.match(reused.text, /VOICE_RECORDING_ALREADY_USED/);
 
