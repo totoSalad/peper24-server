@@ -106,7 +106,7 @@ pnpm migrate
 pnpm dev
 ```
 
-默认开发配置连接本机 `peper24` MySQL 数据库和 Redis，并使用确定性的 `development` AI Provider，不需要真实模型 Key。服务启动后监听 `http://127.0.0.1:7001`：
+默认开发配置连接本机 `peper24` MySQL 数据库和 Redis。服务启动后监听 `http://127.0.0.1:7001`；`/api/health` 只检查进程，确认数据库模型和 Redis 可用请检查 `/api/ready`：
 
 ```bash
 curl http://127.0.0.1:7001/api/health
@@ -161,6 +161,7 @@ pnpm migrate              # 执行数据库迁移
 pnpm lint                 # ESLint
 pnpm build                # TypeScript 类型检查，不生成 JS
 pnpm test:unit            # 单元测试
+pnpm test:integration     # 重建独立测试库并测试真实 HTTP、MySQL 和 Redis
 pnpm test:report          # 单元测试，生成 HTML 测试报告并在浏览器中打开
 pnpm test:integration     # MySQL、Redis 与 HTTP 集成测试
 pnpm test                 # 单元测试 + 集成测试

@@ -69,7 +69,7 @@ systemctl restart peper24-api
 
 healthy=false
 for _ in $(seq 1 30); do
-  if curl -fsS http://127.0.0.1:7001/api/health >/dev/null; then
+  if curl -fsS http://127.0.0.1:7001/api/ready >/dev/null; then
     healthy=true
     break
   fi

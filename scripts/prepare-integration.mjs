@@ -11,8 +11,11 @@ const connection = await mysql.createConnection({
 });
 
 try {
+  // Never reuse a test schema: a partial prior migration can otherwise make
+  // the suite pass or fail depending on leftovers from an earlier run.
+  await connection.query(`DROP DATABASE IF EXISTS ${database}`);
   await connection.query(
-    `CREATE DATABASE IF NOT EXISTS ${database} CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci`,
+    `CREATE DATABASE ${database} CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci`,
   );
   await connection.query(
     `GRANT ALL PRIVILEGES ON ${database}.* TO ${connection.escape(applicationUser)}@'%'`,

@@ -7,7 +7,7 @@
 - 历史版本：`/opt/peper24/releases/server`
 - 生产配置：`/opt/peper24/shared/server/.env.production`
 
-推送 `main` 后，GitHub Actions 会先执行 build 和 unit tests，再上传源码包。服务器完成依赖安装、TypeScript 编译、argon2 本地编译和数据库迁移后，才切换当前版本并重启 API。健康检查失败时自动恢复上一个版本。
+推送 `main` 后，GitHub Actions 会先执行 build、单元测试和使用独立 MySQL/Redis 的集成测试，再上传源码包。服务器完成依赖安装、TypeScript 编译、argon2 本地编译和数据库迁移后，才切换当前版本并重启 API。就绪检查失败时自动恢复上一个版本。
 
 ## GitHub Actions Secrets
 
@@ -25,6 +25,6 @@
 ```bash
 systemctl status peper24-api
 journalctl -u peper24-api -f
-curl -fsS http://127.0.0.1:7001/api/health
+curl -fsS http://127.0.0.1:7001/api/ready
 readlink -f /opt/peper24/current/server
 ```
