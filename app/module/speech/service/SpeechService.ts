@@ -1,3 +1,4 @@
+import { setTimeout as delay } from 'node:timers/promises';
 import { AccessLevel, Inject, SingletonProto } from '@eggjs/tegg';
 import { AppError } from '../../system/error/AppError';
 import { Clock, IdGenerator } from '../../system/service/SystemPorts';
@@ -18,6 +19,7 @@ const UPLOAD_URL_SECONDS = 5 * 60;
 const DOWNLOAD_URL_SECONDS = 10 * 60;
 const CLEANUP_BATCH_SIZE = 100;
 const SUBMISSION_STALE_MS = 60_000;
+const MAX_TRANSCRIPTION_POLLS = 60;
 
 const extensionByType: Record<VoiceContentType, 'webm' | 'mp4'> = {
   'audio/webm': 'webm',
@@ -137,7 +139,26 @@ export class SpeechService {
     return this.currentTranscription(recording);
   }
 
-  async prepareVoiceMessage(userId: string, recordingId: string) {
+  async prepareVoiceMessage(
+    userId: string,
+    recordingId: string,
+    durationMs: number,
+    signal?: AbortSignal,
+  ) {
+    let transcription = await this.startTranscription(userId, recordingId, durationMs);
+    for (let pollCount = 0; transcription.status === 'processing'; pollCount += 1) {
+      if (pollCount >= MAX_TRANSCRIPTION_POLLS) {
+        throw new AppError('SPEECH_PROVIDER_UNAVAILABLE', '语音识别服务暂时不可用', 503);
+      }
+      signal?.throwIfAborted();
+      if (pollCount > 0) {
+        await delay(transcription.retryAfterMs, undefined, signal ? { signal } : undefined);
+      }
+      transcription = await this.getTranscription(userId, recordingId);
+    }
+    if (transcription.status === 'failed') {
+      throw new AppError(transcription.errorCode, '语音识别失败，请重试', 502);
+    }
     const recording = await this.requireActiveRecording(userId, recordingId);
     this.assertVoiceMessageReady(recording);
     return { recordingId: recording.id, transcript: recording.transcript };
@@ -303,7 +324,6 @@ export class SpeechService {
     return {
       status: 'completed' as const,
       recordingId: recording.id,
-      transcript: recording.transcript ?? '',
       durationMs: recording.durationMs,
     };
   }

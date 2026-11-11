@@ -204,7 +204,7 @@ describe('MysqlSpeechRepository', () => {
       { sql: "expires_at = '2026-08-05 03:00:00.000'", code: 'VOICE_RECORDING_EXPIRED' },
     ]) {
       const recordingId = await createCompletedRecording();
-      const prepared = await speech.prepareVoiceMessage(userId, recordingId);
+      const prepared = await speech.prepareVoiceMessage(userId, recordingId, 900);
       await connection.query(`
         UPDATE voice_recordings SET ${scenario.sql} WHERE id = ? AND user_id = ?
       `, [ recordingId, userId ]);

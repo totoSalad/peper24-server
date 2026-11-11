@@ -15,5 +15,7 @@ export const StreamMessageSchema = z.union([ z.object({
 }).strict(), z.object({
   voiceRecordingId: z.string().trim().min(1)
     .max(128),
+  durationMs: z.number().int().min(1)
+    .max(60_000),
   clientRequestId: ClientRequestSchema,
 }).strict() ]);

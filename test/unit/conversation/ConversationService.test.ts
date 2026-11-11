@@ -117,7 +117,7 @@ describe('ConversationService', () => {
     );
     return {
       repository, vocabularyRepository, memoryRepository, ai, service,
-      speech, speechRepository, speechStorage, speechClock,
+      speech, speechRepository, speechStorage, speechRecognition, speechClock,
     };
   }
 
@@ -186,7 +186,7 @@ describe('ConversationService', () => {
     });
   });
 
-  it('uses the completed server transcript as voice-message content and binds it atomically', async () => {
+  it('transcribes a submitted voice message and binds the server transcript atomically', async () => {
     const context = setup();
     await context.service.createConversation('01USER', { topic: 'restaurant' });
     const upload = await context.speech.createVoiceUpload('01USER', {
@@ -197,10 +197,9 @@ describe('ConversationService', () => {
     context.speechStorage.objects.set(objectKey, {
       sizeBytes: 1024, contentType: 'audio/webm',
     });
-    await context.speech.startTranscription('01USER', upload.recordingId, 900);
-
     const events = await collect(context.service.streamMessage('01USER', '01CONVERSATION', {
       voiceRecordingId: upload.recordingId,
+      durationMs: 900,
       clientRequestId: 'voice-request-1',
     }));
 
@@ -211,6 +210,7 @@ describe('ConversationService', () => {
     assert.equal(context.repository.voiceBindings.get(upload.recordingId), '01USERMESSAGE');
     assert.equal(context.speechRepository.recordings.get(upload.recordingId)?.messageId,
       '01USERMESSAGE');
+    assert.equal(context.speechRecognition.submitCalls, 1);
   });
 
   it('rejects mixed text and voice input instead of trusting client-supplied content', async () => {
@@ -222,6 +222,12 @@ describe('ConversationService', () => {
       voiceRecordingId: '01RECORDING',
       clientRequestId: 'voice-mixed',
     })), (error: unknown) => error instanceof AppError && error.code === 'INVALID_MESSAGE');
+
+    await assert.rejects(collect(service.streamMessage('01USER', '01CONVERSATION', {
+      voiceRecordingId: '01RECORDING',
+      clientRequestId: 'voice-without-duration',
+    })), (error: unknown) => error instanceof AppError
+      && error.code === 'INVALID_RECORDING_DURATION');
   });
 
   it('resumes an interrupted voice exchange from persisted content after the audio expires', async () => {
@@ -236,7 +242,11 @@ describe('ConversationService', () => {
       sizeBytes: 1024, contentType: 'audio/webm',
     });
     await context.speech.startTranscription('01USER', upload.recordingId, 900);
-    const input = { voiceRecordingId: upload.recordingId, clientRequestId: 'voice-retry' };
+    const input = {
+      voiceRecordingId: upload.recordingId,
+      durationMs: 900,
+      clientRequestId: 'voice-retry',
+    };
     context.ai.failure = new Error('provider unavailable');
     assert.equal((await collect(context.service.streamMessage(
       '01USER', '01CONVERSATION', input,

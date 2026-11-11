@@ -68,7 +68,7 @@ describe('SpeechService', () => {
         && error.code === 'INVALID_RECORDING_DURATION');
   });
 
-  it('verifies uploaded metadata, submits ASR once, and returns the server transcript', async () => {
+  it('verifies uploaded metadata and reports completion without exposing the transcript', async () => {
     const context = setup();
     const { recordingId } = await createUploadedRecording(context);
 
@@ -76,7 +76,7 @@ describe('SpeechService', () => {
     const replay = await context.service.startTranscription('01USER', recordingId, 900);
 
     assert.deepEqual(first, {
-      status: 'completed', recordingId, transcript: 'Hello there.', durationMs: 900,
+      status: 'completed', recordingId, durationMs: 900,
     });
     assert.deepEqual(replay, first);
     assert.equal(context.recognition.submitCalls, 1);
@@ -159,26 +159,36 @@ describe('SpeechService', () => {
       'completed');
   });
 
-  it('uses only a completed server transcript for a voice message and binds it once', async () => {
+  it('transcribes a submitted voice message and binds its server transcript once', async () => {
     const context = setup();
     const { recordingId } = await createUploadedRecording(context);
 
-    await assert.rejects(context.service.prepareVoiceMessage('01USER', recordingId),
-      (error: unknown) => error instanceof AppError
-        && error.code === 'TRANSCRIPTION_NOT_COMPLETED');
-    await context.service.startTranscription('01USER', recordingId, 900);
-    assert.deepEqual(await context.service.prepareVoiceMessage('01USER', recordingId), {
+    assert.deepEqual(await context.service.prepareVoiceMessage('01USER', recordingId, 900), {
       recordingId, transcript: 'Hello there.',
     });
     await context.service.bindVoiceMessage(undefined, '01USER', recordingId, '01MESSAGE');
     await context.service.bindVoiceMessage(undefined, '01USER', recordingId, '01MESSAGE');
-    await assert.rejects(context.service.prepareVoiceMessage('01USER', recordingId),
+    await assert.rejects(context.service.prepareVoiceMessage('01USER', recordingId, 900),
       (error: unknown) => error instanceof AppError
         && error.code === 'VOICE_RECORDING_ALREADY_USED');
     await assert.rejects(
       context.service.bindVoiceMessage(undefined, '01USER', recordingId, '02MESSAGE'),
       (error: unknown) => error instanceof AppError
         && error.code === 'VOICE_RECORDING_ALREADY_USED');
+  });
+
+  it('waits for asynchronous recognition before preparing the voice message', async () => {
+    const context = setup();
+    const { recordingId } = await createUploadedRecording(context);
+    context.recognition.results.push(
+      { status: 'processing' },
+      { status: 'completed', transcript: 'Recognized later.', durationMs: 900 },
+    );
+
+    assert.deepEqual(await context.service.prepareVoiceMessage('01USER', recordingId, 900), {
+      recordingId, transcript: 'Recognized later.',
+    });
+    assert.equal(context.recognition.pollCalls, 2);
   });
 
   it('signs playback only for the owner before expiry and exposes no object key', async () => {

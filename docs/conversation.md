@@ -28,7 +28,7 @@ conversation/
 | POST | `/api/v1/conversations` | 创建新会话（含 AI 欢迎语） |
 | GET | `/api/v1/conversations` | 获取会话列表 |
 | GET | `/api/v1/conversations/:id/messages` | 获取某会话的消息列表 |
-| POST | `/api/v1/conversations/:id/messages/stream` | **SSE 流式发送文本或已识别语音消息** |
+| POST | `/api/v1/conversations/:id/messages/stream` | **SSE 流式发送文本或直接提交待识别语音消息** |
 | POST | `/api/v1/messages/:id/translation` | 翻译消息 |
 
 ## 数据模型
@@ -59,7 +59,7 @@ POST /api/v1/conversations/:id/messages/stream
 ├─ 1. 鉴权 ──► AccountService.getCurrentUser()
 ├─ 2. 校验 ──► Zod: content 与 voiceRecordingId 二选一
 ├─ 3. 会话校验 ──► 会话存在 & 属于当前用户
-├─ 4. 语音解析 ──► SpeechService 读取已完成的服务端 transcript
+├─ 4. 语音解析 ──► SpeechService 启动/等待 ASR，读取服务端 transcript
 ├─ 5. beginExchange() ──── 幂等性与事务屏障 ┐
 │     │                                       │
 │     ├── 锁定 conversation，连续分配 user/assistant sequence
