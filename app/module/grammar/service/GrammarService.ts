@@ -12,9 +12,18 @@ export class GrammarService {
     if (analysis.explicitGrammarQuestion) return [];
 
     const grouped = new Map<GrammarErrorType, Correction[]>();
+    const seen = new Set<string>();
     for (const error of analysis.errors.slice(0, 8)) {
       const detail = this.normalize(error);
       if (!detail) continue;
+      const duplicateKey = JSON.stringify([
+        detail.errorType,
+        detail.original,
+        detail.corrected,
+        detail.note,
+      ]);
+      if (seen.has(duplicateKey)) continue;
+      seen.add(duplicateKey);
       const details = grouped.get(detail.errorType) ?? [];
       details.push(detail);
       grouped.set(detail.errorType, details);
