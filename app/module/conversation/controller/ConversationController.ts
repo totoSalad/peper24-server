@@ -89,7 +89,9 @@ export class ConversationController {
     userId: string,
     conversationId: string,
     input: {
-      content: string;
+      content?: string;
+      voiceRecordingId?: string;
+      durationMs?: number;
       clientRequestId: string;
       signal: AbortSignal;
     },

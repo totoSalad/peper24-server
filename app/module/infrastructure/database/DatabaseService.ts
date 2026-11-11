@@ -8,6 +8,7 @@ import AIUsageLog from '../../../model/AIUsageLog';
 import GrammarErrorOccurrence from '../../../model/GrammarErrorOccurrence';
 import GrammarErrorPattern from '../../../model/GrammarErrorPattern';
 import Memory from '../../../model/Memory';
+import VoiceRecording from '../../../model/VoiceRecording';
 
 @SingletonProto({ accessLevel: AccessLevel.PUBLIC })
 export class DatabaseService {
@@ -33,6 +34,7 @@ export class DatabaseService {
           GrammarErrorPattern,
           GrammarErrorOccurrence,
           Memory,
+          VoiceRecording,
         ],
       });
       this.connecting = realm.connect().then(() => {

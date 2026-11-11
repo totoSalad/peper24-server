@@ -35,6 +35,7 @@ export class InMemoryConversationRepository implements ConversationRepository {
   readonly dailyChatTokens = new Map<string, number>();
   readonly grammarPatterns = new Map<GrammarErrorType, { count: number; corrected: boolean }>();
   readonly grammarOccurrences = new Map<string, GrammarOccurrenceGroup>();
+  readonly voiceBindings = new Map<string, string>();
 
   async create(input: CreateConversationInput): Promise<ConversationRecord> {
     this.conversations.push(input.conversation);
@@ -133,6 +134,10 @@ export class InMemoryConversationRepository implements ConversationRepository {
     const next = this.conversations[conversationIndex].nextMessageSequence;
     const userMessage = { ...input.userMessage, sequence: next };
     const assistantMessage = { ...input.assistantMessage, sequence: next + 1 };
+    if (input.voiceBinding) {
+      await input.voiceBinding.bindToMessage(undefined, userMessage.id);
+      this.voiceBindings.set(input.voiceBinding.recordingId, userMessage.id);
+    }
     this.conversations[conversationIndex] = {
       ...this.conversations[conversationIndex],
       nextMessageSequence: next + 2,

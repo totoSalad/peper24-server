@@ -13,6 +13,7 @@ import { AppError } from '../../system/error/AppError';
 import { Clock, IdGenerator } from '../../system/service/SystemPorts';
 import { VocabularyService } from '../../vocabulary/service/VocabularyService';
 import { MemoryService } from '../../memory/service/MemoryService';
+import { SpeechService } from '../../speech/service/SpeechService';
 import {
   ConversationRecord,
   ConversationRepository,
@@ -25,7 +26,9 @@ export interface CreateConversationRequest {
 }
 
 export interface StreamMessageRequest {
-  content: string;
+  content?: string;
+  voiceRecordingId?: string;
+  durationMs?: number;
   clientRequestId: string;
   signal?: AbortSignal;
 }
@@ -113,6 +116,7 @@ export class ConversationService {
     @Inject() private readonly grammar: GrammarService,
     @Inject() private readonly vocabulary: VocabularyService,
     @Inject() private readonly memory: MemoryService,
+    @Inject() private readonly speech: SpeechService,
     @Inject('aiLogger') private readonly aiLogger: Logger,
   ) {}
 
@@ -168,7 +172,13 @@ export class ConversationService {
   async listMessages(userId: string, conversationId: string) {
     const messages = await this.conversations.listMessages(conversationId, userId);
     if (!messages) throw new AppError('CONVERSATION_NOT_FOUND', '会话不存在', 404);
-    return messages.map(item => this.toMessage(item));
+    const recordings = await this.speech.describeMessageRecordings(
+      userId, messages.map(message => message.id),
+    );
+    return messages.map(item => ({
+      ...this.toMessage(item),
+      ...(recordings[item.id] ? { voiceRecording: recordings[item.id] } : {}),
+    }));
   }
 
   async* streamMessage(
@@ -177,9 +187,17 @@ export class ConversationService {
     input: StreamMessageRequest,
     learner?: LearnerContext,
   ): AsyncIterable<ChatEvent> {
-    const content = input.content.trim();
-    if (!content || content.length > 4000) {
+    const textContent = input.content?.trim();
+    const voiceRecordingId = input.voiceRecordingId?.trim();
+    if (Boolean(textContent) === Boolean(voiceRecordingId)) {
       throw new AppError('INVALID_MESSAGE', '消息长度必须是 1 到 4000 个字符');
+    }
+    if (textContent && textContent.length > 4000) {
+      throw new AppError('INVALID_MESSAGE', '消息长度必须是 1 到 4000 个字符');
+    }
+    if (voiceRecordingId && (!Number.isInteger(input.durationMs)
+      || input.durationMs! < 1 || input.durationMs! > 60_000)) {
+      throw new AppError('INVALID_RECORDING_DURATION', '录音时长必须在 60 秒内');
     }
     if (!input.clientRequestId.trim() || input.clientRequestId.length > 128) {
       throw new AppError('INVALID_CLIENT_REQUEST_ID', '客户端请求 ID 不正确');
@@ -199,6 +217,16 @@ export class ConversationService {
     }
     await this.enforceDailyTokenLimit(userId, now);
     const history = await this.conversations.listMessages(conversationId, userId) ?? [];
+    const persistedUserMessage = existingAssistant?.status === 'interrupted'
+      ? history.find(message => message.role === 'user'
+        && message.clientRequestId === clientRequestId)
+      : undefined;
+    const preparedVoice = voiceRecordingId && !persistedUserMessage
+      ? await this.speech.prepareVoiceMessage(
+        userId, voiceRecordingId, input.durationMs!, input.signal,
+      )
+      : undefined;
+    const content = persistedUserMessage?.content ?? preparedVoice?.transcript ?? textContent as string;
     const userMessage: NewMessageRecord = {
       id: this.ids.next(),
       conversationId,
@@ -223,6 +251,14 @@ export class ConversationService {
       userId,
       userMessage,
       assistantMessage,
+      ...(preparedVoice ? {
+        voiceBinding: {
+          recordingId: preparedVoice.recordingId,
+          bindToMessage: (transaction: unknown, messageId: string) => this.speech.bindVoiceMessage(
+            transaction, userId, preparedVoice.recordingId, messageId,
+          ),
+        },
+      } : {}),
     });
     if (!exchange.created) {
       yield* this.replay(exchange.assistantMessage);

@@ -10,7 +10,8 @@ Peper24 Server 是面向英语口语学习者的 AI 对话后端。它负责会�
 
 ## 核心设计
 
-- **Conversation**：会话历史、POST SSE 流式回复、请求幂等、中断恢复和每日 Token 限额；
+- **Conversation**：会话历史、文本/语音 POST SSE 流式回复、请求幂等、中断恢复和每日 Token 限额；
+- **Speech**：私有 OSS 直传、阿里云英语 ASR、30 天原音保留与按消息播放授权；
 - **Adaptive Prompt**：固定陪练角色，并按 CEFR A1-C2 调整词汇、句法、回复长度和提问方式；
 - **Memory**：从用户消息中提议记忆，由服务端完成来源校验、准入评分、合并、过期、纠正和删除；
 - **Learning**：固定语法错误分类、生词解释与去重、SM-2 四档复习、翻译和每日学习小结；
@@ -80,6 +81,7 @@ app/
     ├── grammar/                 # 语法分析与纠正记录
     ├── learning-summary/        # 每日学习小结
     ├── memory/                  # 记忆提取、准入与管理
+    ├── speech/                  # 用户录音、ASR、播放授权与过期清理
     ├── vocabulary/              # 生词本与复习
     └── infrastructure/          # MySQL、Redis 与外部能力
 database/migrations/             # 数据库迁移
@@ -104,7 +106,7 @@ pnpm migrate
 pnpm dev
 ```
 
-默认开发配置连接本机 `peper24` MySQL 数据库和 Redis，并使用确定性的 `development` AI Provider，不需要真实模型 Key。服务启动后监听 `http://127.0.0.1:7001`：
+默认开发配置连接本机 `peper24` MySQL 数据库和 Redis。服务启动后监听 `http://127.0.0.1:7001`；`/api/health` 只检查进程，确认数据库模型和 Redis 可用请检查 `/api/ready`：
 
 ```bash
 curl http://127.0.0.1:7001/api/health
@@ -131,6 +133,13 @@ VERIFICATION_CODE_SECRET=replace-with-a-random-secret
 AI_TEXT_PROVIDER=deepseek
 DEEPSEEK_API_KEY=replace-with-your-api-key
 DAILY_CHAT_TOKEN_LIMIT=150000
+
+DASHSCOPE_API_KEY=replace-with-your-api-key
+DASHSCOPE_ASR_MODEL=paraformer-v2
+OSS_REGION=oss-cn-beijing
+OSS_BUCKET=replace-with-private-bucket
+OSS_ACCESS_KEY_ID=replace-with-access-key
+OSS_ACCESS_KEY_SECRET=replace-with-secret
 ```
 
 `.env` 只用于本地环境，不应提交到仓库。
@@ -152,6 +161,7 @@ pnpm migrate              # 执行数据库迁移
 pnpm lint                 # ESLint
 pnpm build                # TypeScript 类型检查，不生成 JS
 pnpm test:unit            # 单元测试
+pnpm test:integration     # 重建独立测试库并测试真实 HTTP、MySQL 和 Redis
 pnpm test:report          # 单元测试，生成 HTML 测试报告并在浏览器中打开
 pnpm test:integration     # MySQL、Redis 与 HTTP 集成测试
 pnpm test                 # 单元测试 + 集成测试
@@ -171,6 +181,7 @@ pnpm coverage             # 单元测试覆盖率，并生成 HTML 覆盖率报�
 - [AI 模块](docs/ai.md)
 - [Conversation 模块](docs/conversation.md)
 - [Memory 模块](docs/memory.md)
+- [Speech 模块](docs/speech.md)
 - [Grammar 模块](docs/grammar.md)
 - [Vocabulary 模块](docs/vocabulary.md)
 - [技术方案](docs/technical-design.md)

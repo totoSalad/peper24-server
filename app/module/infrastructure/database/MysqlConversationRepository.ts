@@ -187,6 +187,9 @@ export class MysqlConversationRepository extends ConversationRepository {
         `, [ next + 2, input.userMessage.conversationId, input.userId ]);
         await Message.create(userMessage, { connection });
         await Message.create(assistantMessage, { connection });
+        if (input.voiceBinding) {
+          await input.voiceBinding.bindToMessage(connection, userMessage.id);
+        }
         created = { created: true, userMessage, assistantMessage };
       });
     } catch (error) {
